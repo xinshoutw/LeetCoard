@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --tile-stroke: rgba(154, 163, 199, 0.18);
+  --tile-fill: rgba(20, 27, 61, 0.78);
+}
+
+html, body, #root {
+  height: 100%;
+  background: radial-gradient(circle at 18% 12%, #161e54 0%, transparent 55%),
+              radial-gradient(circle at 82% 88%, #2a1244 0%, transparent 60%),
+              #070b1f;
+}
+
+/* Stage backdrop subtle dotted texture */
+.stage-grid {
+  background-image:
+    radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+    radial-gradient(rgba(66,133,244,0.05) 1px, transparent 1px);
+  background-size: 32px 32px, 96px 96px;
+  background-position: 0 0, 16px 16px;
+}
+
+/* Glass surface */
+.surface {
+  background: linear-gradient(180deg, rgba(20,27,61,0.78) 0%, rgba(13,19,48,0.85) 100%);
+  border: 1px solid rgba(154,163,199,0.18);
+  backdrop-filter: blur(8px);
+}
+
+/* Skeleton scrollbar styling for big screens */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); }
+::-webkit-scrollbar-thumb { background: rgba(66,133,244,0.4); border-radius: 6px; }
+
+/* Compositor-friendly motion only */
+* { will-change: auto; }
+
+/* Mono number rolldown helper */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Floor pattern for stairs */
+.floor-stripes {
+  background-image: linear-gradient(180deg,
+    rgba(66,133,244,0.18) 0px,
+    rgba(66,133,244,0.18) 2px,
+    transparent 2px,
+    transparent 60px);
+  background-size: 100% 60px;
+}

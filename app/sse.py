@@ -19,7 +19,7 @@ log = logging.getLogger("gdg.sse")
 _QUEUE_MAX = 64
 
 
-@dataclass
+@dataclass(eq=False)  # identity hashable so it can live in a set
 class _Subscriber:
     sid: str
     queue: asyncio.Queue
