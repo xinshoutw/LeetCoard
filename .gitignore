@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Persistent contest state (live JSON store)
+data/
+!data/.gitkeep
+
+# Node / Vite
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/stats.html
+
+# IDE / OS
+.DS_Store
+.idea/workspace.xml
+*.log

@@ -1,0 +1,19 @@
+{
+  "speed": 1.0,
+  "_doc": "offset_sec is seconds since contest start_time; statuses match LeetCode's statusDisplay.",
+  "submissions": [
+    {"username": "alice",   "title_slug": "two-sum",             "status": "Accepted",            "offset_sec": 5},
+    {"username": "bob",     "title_slug": "two-sum",             "status": "Wrong Answer",        "offset_sec": 8},
+    {"username": "carol",   "title_slug": "valid-parentheses",   "status": "Accepted",            "offset_sec": 12},
+    {"username": "bob",     "title_slug": "two-sum",             "status": "Accepted",            "offset_sec": 18},
+    {"username": "alice",   "title_slug": "valid-parentheses",   "status": "Accepted",            "offset_sec": 24},
+    {"username": "dan",     "title_slug": "two-sum",             "status": "Time Limit Exceeded", "offset_sec": 30},
+    {"username": "carol",   "title_slug": "3sum",                "status": "Wrong Answer",        "offset_sec": 35},
+    {"username": "alice",   "title_slug": "3sum",                "status": "Accepted",            "offset_sec": 42},
+    {"username": "dan",     "title_slug": "two-sum",             "status": "Accepted",            "offset_sec": 48},
+    {"username": "bob",     "title_slug": "valid-parentheses",   "status": "Accepted",            "offset_sec": 56},
+    {"username": "carol",   "title_slug": "3sum",                "status": "Accepted",            "offset_sec": 63},
+    {"username": "alice",   "title_slug": "trapping-rain-water", "status": "Runtime Error",       "offset_sec": 70},
+    {"username": "alice",   "title_slug": "trapping-rain-water", "status": "Accepted",            "offset_sec": 80}
+  ]
+}
