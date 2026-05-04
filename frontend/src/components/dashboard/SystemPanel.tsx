@@ -16,17 +16,21 @@ export default function SystemPanel({ snapshot }: { snapshot: AdminSnapshot }) {
       </div>
       <div className="max-h-72 overflow-y-auto text-[12px] font-mono space-y-1">
         {events.map((e) => (
-          <div key={e.id} className="flex items-start gap-2 py-1 border-b border-white/5">
-            <span className="text-ink-300 text-[10px] tabular w-20 shrink-0">
+          <div
+            key={e.id}
+            className="grid grid-cols-[64px_140px_minmax(0,1fr)] gap-2 py-1 border-b border-white/5 items-start"
+          >
+            <span className="text-ink-300 text-[10px] tabular shrink-0">
               {new Date(e.at).toLocaleTimeString([], { hour12: false })}
             </span>
             <span
-              className="text-[10px] font-bold uppercase shrink-0 w-12"
+              className="text-[10px] font-bold uppercase truncate"
+              title={e.kind}
               style={{ color: LEVEL_COLOR[e.level] ?? "#9aa3c7" }}
             >
               {e.kind}
             </span>
-            <span className="flex-1 text-ink-200 break-words">{e.message}</span>
+            <span className="text-ink-200 break-words min-w-0">{e.message}</span>
           </div>
         ))}
         {!events.length && <div className="text-center text-ink-300 py-6">尚無事件</div>}

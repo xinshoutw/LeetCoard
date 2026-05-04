@@ -83,7 +83,7 @@ class ContestEngine:
     def contest(self) -> Contest:
         return self._store.contest
 
-    def _flag_dirty_and_broadcast(self, event: str, data: dict, audience: str = "public") -> None:
+    def _flag_dirty_and_broadcast(self, event: str, data: dict, audience: str = "all") -> None:
         self._store.mark_dirty()
         self._bc.broadcast(event, data, audience=audience)
 
@@ -133,9 +133,15 @@ class ContestEngine:
                     "reached_current_score_at": p.reached_current_score_at.isoformat()
                     if p.reached_current_score_at
                     else None,
+                    # In-contest counts (only for tracked problems).
                     "easy_solved": self._count_solved_by_diff(p, Difficulty.easy),
                     "medium_solved": self._count_solved_by_diff(p, Difficulty.medium),
                     "hard_solved": self._count_solved_by_diff(p, Difficulty.hard),
+                    # Pre-game info (LeetCode global stats).
+                    "lc_ranking": p.lc_ranking,
+                    "lc_easy_total": p.lc_easy_total,
+                    "lc_medium_total": p.lc_medium_total,
+                    "lc_hard_total": p.lc_hard_total,
                 }
             )
         return out
@@ -184,27 +190,45 @@ class ContestEngine:
         if self.contest.status in (ContestStatus.running, ContestStatus.ended):
             raise StartLockError(f"{what} cannot be modified after contest has started")
 
-    async def set_problems(self, problems: List[Problem]) -> None:
+    def _ensure_unlocked_problems(self) -> None:
+        # Problems & times stay locked once running. Per user feedback,
+        # participants are intentionally allowed to change mid-contest.
+        if self.contest.status in (ContestStatus.running, ContestStatus.ended):
+            raise StartLockError("Problems cannot be modified after contest has started")
+
+    async def set_problems(self, problems: List[Problem]) -> Tuple[List[str], List[str]]:
+        """Returns (added_slugs, removed_slugs) so the caller can fire pre-check
+        only on newly added problems."""
         async with self._lock:
-            self._ensure_unlocked("Problems")
+            self._ensure_unlocked_problems()
             seen_slugs = set()
             for p in problems:
                 if p.title_slug in seen_slugs:
                     raise ValueError(f"Duplicate problem slug: {p.title_slug}")
                 seen_slugs.add(p.title_slug)
+            old_slugs = {p.title_slug for p in self.contest.problems}
+            new_slugs = {p.title_slug for p in problems}
+            added = sorted(new_slugs - old_slugs)
+            removed = sorted(old_slugs - new_slugs)
             self.contest.problems = sorted(problems, key=lambda p: p.order)
-            self._system_event("problems_updated", f"{len(problems)} problems set")
-            self._flag_dirty_and_broadcast("problems_updated", {
-                "problems": [p.model_dump(mode="json") for p in self.contest.problems]
-            })
+            self._system_event(
+                "problems_updated",
+                f"{len(problems)} problems · +{len(added)} -{len(removed)}",
+            )
+            self._flag_dirty_and_broadcast(
+                "problems_updated",
+                {"problems": [p.model_dump(mode="json") for p in self.contest.problems]},
+            )
+        return added, removed
 
-    async def upsert_participants(self, rows: List[Tuple[str, str]]) -> Tuple[int, int, List[str]]:
-        """Bulk add/update; returns (created, updated, errors)."""
+    async def upsert_participants(self, rows: List[Tuple[str, str]]) -> Tuple[int, int, List[str], List[str]]:
+        """Bulk add/update; returns (created, updated, errors, new_usernames).
+        Participants are intentionally NOT locked during running."""
         created = 0
         updated = 0
         errors: List[str] = []
+        new_usernames: List[str] = []
         async with self._lock:
-            self._ensure_unlocked("Participants")
             for username, sid in rows:
                 u = (username or "").strip()
                 s = (sid or "").strip()
@@ -219,6 +243,7 @@ class ContestEngine:
                         username=u, student_id=s, color=_hash_color(u)
                     )
                     created += 1
+                    new_usernames.append(u)
             self._system_event(
                 "participants_updated",
                 f"{created} created, {updated} updated, {len(errors)} errors",
@@ -229,11 +254,10 @@ class ContestEngine:
                 audience="admin",
             )
             self._push_leaderboard()
-        return created, updated, errors
+        return created, updated, errors, new_usernames
 
     async def remove_participant(self, username: str) -> bool:
         async with self._lock:
-            self._ensure_unlocked("Participants")
             existed = self.contest.participants.pop(username, None) is not None
             if existed:
                 self._system_event("participant_removed", f"removed {username}")
@@ -244,6 +268,21 @@ class ContestEngine:
                 )
                 self._push_leaderboard()
             return existed
+
+    async def update_profile(self, username: str, *, avatar_url: Optional[str], lc_ranking: Optional[int],
+                              easy_total: int, medium_total: int, hard_total: int) -> None:
+        async with self._lock:
+            p = self.contest.participants.get(username)
+            if not p:
+                return
+            p.avatar_url = avatar_url or p.avatar_url
+            p.lc_ranking = lc_ranking
+            p.lc_easy_total = easy_total
+            p.lc_medium_total = medium_total
+            p.lc_hard_total = hard_total
+            p.profile_fetched_at = _utcnow()
+            self._store.mark_dirty()
+        self._push_leaderboard()
 
     async def set_times(self, start: Optional[datetime], end: Optional[datetime]) -> None:
         async with self._lock:
@@ -321,8 +360,20 @@ class ContestEngine:
         async with self._lock:
             problems = list(self.contest.problems) if keep_config else []
             participants = (
-                {u: Participant(username=u, student_id=p.student_id, color=p.color)
-                 for u, p in self.contest.participants.items()}
+                {
+                    u: Participant(
+                        username=u,
+                        student_id=p.student_id,
+                        color=p.color,
+                        avatar_url=p.avatar_url,
+                        lc_ranking=p.lc_ranking,
+                        lc_easy_total=p.lc_easy_total,
+                        lc_medium_total=p.lc_medium_total,
+                        lc_hard_total=p.lc_hard_total,
+                        profile_fetched_at=p.profile_fetched_at,
+                    )
+                    for u, p in self.contest.participants.items()
+                }
                 if keep_config
                 else {}
             )
@@ -335,9 +386,18 @@ class ContestEngine:
                 last_reset_at=_utcnow(),
             )
             self._system_event("reset", f"keep_config={keep_config}")
-        self._flag_dirty_and_broadcast(
+        # Send reset to BOTH audiences with audience-specific snapshots so the
+        # admin dashboard doesn't lose its admin-only fields.
+        self._store.mark_dirty()
+        self._bc.broadcast(
             "contest_reset",
-            {"keep_config": keep_config, "snapshot": self.snapshot_dict()},
+            {"keep_config": keep_config, "snapshot": self.snapshot_dict("public")},
+            audience="public",
+        )
+        self._bc.broadcast(
+            "contest_reset",
+            {"keep_config": keep_config, "snapshot": self.snapshot_dict("admin")},
+            audience="admin",
         )
         self._push_leaderboard()
         await self._store.flush_now()

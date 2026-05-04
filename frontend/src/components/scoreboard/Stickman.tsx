@@ -28,10 +28,11 @@ function computeLayout(rows: LeaderboardRow[], width: number, height: number, st
   const placed: { row: LeaderboardRow; x: number; y: number }[] = [];
 
   if (status === "setup" || status === "precheck") {
-    // Queue them along the bottom platform.
+    // Queue them along the bottom platform — but lifted up by ~70px so the
+    // foot-labels (E/M/H counts) and head-labels both stay inside the canvas.
     const queue = rows.slice().sort((a, b) => a.username.localeCompare(b.username));
-    const spacing = Math.min(80, (width - 80) / Math.max(1, queue.length));
-    const y = (TOTAL_STEPS - 1) * stepH; // bottom (score=0)
+    const spacing = Math.min(110, (width - 100) / Math.max(1, queue.length));
+    const y = (TOTAL_STEPS - 1) * stepH - 90;
     queue.forEach((r, i) => {
       const startX = (width - spacing * (queue.length - 1)) / 2;
       placed.push({ row: r, x: startX + i * spacing - width / 2, y });
@@ -75,7 +76,7 @@ export default function Stickman({ rows, status }: Props) {
   }, []);
 
   const layout = computeLayout(rows, size.w, size.h, status);
-  const showLabels = status === "setup" || status === "precheck" || rows.length <= 14;
+  const preGame = status === "setup" || status === "precheck";
 
   return (
     <div
@@ -93,7 +94,7 @@ export default function Stickman({ rows, status }: Props) {
             row={row}
             x={x}
             y={y}
-            showLabel={showLabels}
+            preGame={preGame}
             status={status}
           />
         ))}

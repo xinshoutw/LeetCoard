@@ -35,16 +35,28 @@ class PrecheckWorker:
         self._stop = asyncio.Event()
         self._has_session = bool(settings.session_list)
 
-    async def start(self, *, only_new_problems_for: Optional[Iterable[Tuple[str, str]]] = None) -> None:
+    async def start(
+        self,
+        *,
+        only_new_problems_for: Optional[Iterable[Tuple[str, str]]] = None,
+        transition_status: bool = False,
+    ) -> None:
         """Spawn pre-check. If `only_new_problems_for` provided, only those
         (username, slug) pairs are re-checked. Otherwise full sweep over
-        unchecked pairs."""
+        unchecked pairs.
+
+        `transition_status=True` flips contest status to `precheck` (admin
+        action only). Auto-triggers from participant/problem edits leave the
+        status alone so they can fire safely during `running`/`ended` too.
+        """
         if self._task and not self._task.done():
             log.info("Pre-check already running; ignoring re-trigger")
             return
         self._stop.clear()
         targets = list(only_new_problems_for) if only_new_problems_for is not None else None
-        self._task = asyncio.create_task(self._run(targets), name="precheck-worker")
+        self._task = asyncio.create_task(
+            self._run(targets, transition_status), name="precheck-worker"
+        )
 
     async def stop(self) -> None:
         self._stop.set()
@@ -55,9 +67,17 @@ class PrecheckWorker:
                 self._task.cancel()
         self._task = None
 
-    async def _run(self, explicit: Optional[List[Tuple[str, str]]]) -> None:
+    async def _run(
+        self,
+        explicit: Optional[List[Tuple[str, str]]],
+        transition_status: bool,
+    ) -> None:
         try:
-            await self._engine.begin_precheck()
+            if transition_status:
+                try:
+                    await self._engine.begin_precheck()
+                except ValueError:
+                    log.info("begin_precheck rejected (status changed); continuing without transition")
             slugs = [p.title_slug for p in self._engine.contest.problems]
             usernames = self._engine.usernames()
 
@@ -85,8 +105,7 @@ class PrecheckWorker:
                     break
                 results: List[PrecheckResult] = []
                 try:
-                    items, full = await self._client.get_solved_problems(username)
-                    solved_slugs = {item.get("titleSlug") for item in items if isinstance(item, dict)}
+                    solved_slugs, full = await self._client.get_solved_slugs(username)
                     confidence = "full" if full else "partial"
                     note = None if full else "Result is partial: no LEETCODE_SESSION configured."
                     for s in slug_list:

@@ -155,15 +155,33 @@ class LeetCodeClient:
         data = await self._get(f"/user/{username}/submissions", params={"limit": limit})
         return _coerce_submission_list(data)
 
-    async def get_solved_problems(self, username: str) -> tuple[List[dict], bool]:
-        """Returns (solved_list, is_full).
+    async def get_solved_slugs(self, username: str) -> tuple[set[str], bool]:
+        """Returns (solved_slug_set, is_full).
 
-        `is_full` is True only when at least one configured session cookie is being
-        used; without one the upstream API caps response at ~20 most-recent.
+        leetcode-api-pied shape: {username, total_solved, solved_slugs:[...], solved:[{title_slug,...}]}
+        `is_full` is True only when a session cookie was used; without one the
+        upstream caps the response at ~20 most-recent.
         """
         data = await self._get(f"/user/{username}/solved", with_session=bool(self._states))
-        items = _coerce_submission_list(data)
-        return items, bool(self._states)
+        slugs: set[str] = set()
+        if isinstance(data, dict):
+            raw = data.get("solved_slugs")
+            if isinstance(raw, list):
+                slugs.update(s for s in raw if isinstance(s, str))
+            raw2 = data.get("solved")
+            if isinstance(raw2, list):
+                for item in raw2:
+                    if isinstance(item, dict):
+                        s = item.get("title_slug") or item.get("titleSlug")
+                        if isinstance(s, str):
+                            slugs.add(s)
+        elif isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict):
+                    s = item.get("title_slug") or item.get("titleSlug")
+                    if isinstance(s, str):
+                        slugs.add(s)
+        return slugs, bool(self._states)
 
 
 def _coerce_submission_list(data) -> List[dict]:

@@ -18,7 +18,12 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function EventFeed({ events, problems }: Props) {
-  const recent = events.slice(-40).reverse();
+  // Per spec: only the FIRST AC per (user, problem) is shown.
+  // - Scoring AC events are kept (they're already first-AC by construction).
+  // - Non-AC events (WA, TLE, RE, ...) are kept as failure feedback.
+  // - AC events that aren't scoring (already-solved replays, outside-window) are dropped.
+  const visible = events.filter((e) => (e.is_accepted ? e.is_scoring : true));
+  const recent = visible.slice(-40).reverse();
   const diffByGslug = new Map(problems.map((p) => [p.title_slug, p.difficulty]));
 
   return (

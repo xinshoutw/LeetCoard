@@ -20,9 +20,15 @@ export interface LeaderboardRow {
   score: number;
   solved_problems: string[];
   reached_current_score_at: string | null;
+  // In-contest tracked-problem AC counts.
   easy_solved: number;
   medium_solved: number;
   hard_solved: number;
+  // LeetCode global stats (populated by profile fetcher).
+  lc_ranking: number | null;
+  lc_easy_total: number;
+  lc_medium_total: number;
+  lc_hard_total: number;
 }
 
 export interface SubmissionEventPayload {

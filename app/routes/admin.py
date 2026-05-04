@@ -104,10 +104,17 @@ async def set_problems(body: ProblemsIn, request: Request, _: None = Depends(req
     engine = request.app.state.engine
     try:
         problems = [Problem(**p.model_dump()) for p in body.problems]
-        await engine.set_problems(problems)
+        added, removed = await engine.set_problems(problems)
     except (ValueError, StartLockError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return {"ok": True, "count": len(problems)}
+
+    # Auto re-run pre-check for every participant against newly added problems.
+    pre = request.app.state.precheck_worker
+    if pre is not None and added and engine.contest.participants:
+        pairs = [(u, s) for u in engine.contest.participants for s in added]
+        await pre.start(only_new_problems_for=pairs)
+
+    return {"ok": True, "count": len(problems), "added": added, "removed": removed}
 
 
 # ---- Participants -----------------------------------------------------------
@@ -129,9 +136,22 @@ async def bulk_upsert(body: ParticipantsBulkIn, request: Request, _: None = Depe
             continue
         rows.append((cleaned[0], cleaned[1]))
     try:
-        created, updated, errors = await engine.upsert_participants(rows)
+        created, updated, errors, new_users = await engine.upsert_participants(rows)
     except StartLockError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+    # Auto-trigger profile fetch for new users.
+    polling = request.app.state.polling_worker
+    if polling is not None:
+        for u in new_users:
+            polling.enqueue_profile_fetch(u)
+
+    # Auto-run pre-check for new users against all current problems.
+    pre = request.app.state.precheck_worker
+    if pre is not None and new_users and engine.contest.problems:
+        pairs = [(u, p.title_slug) for u in new_users for p in engine.contest.problems]
+        await pre.start(only_new_problems_for=pairs)
+
     return {
         "ok": True,
         "created": created,
@@ -188,7 +208,7 @@ async def run_precheck(request: Request, _: None = Depends(require_admin)) -> di
     pre = request.app.state.precheck_worker
     if pre is None:
         raise HTTPException(status_code=503, detail="precheck worker not running (mock mode?)")
-    await pre.start()
+    await pre.start(transition_status=True)
     return {"ok": True}
 
 

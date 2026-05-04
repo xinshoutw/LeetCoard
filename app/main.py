@@ -16,6 +16,7 @@ from .polling import PollingWorker
 from .precheck import PrecheckWorker
 from .routes import admin as admin_routes
 from .routes import public as public_routes
+from .scheduler import ContestScheduler
 from .sse import broadcaster
 from .state import ContestEngine
 from .storage import ContestStore
@@ -59,15 +60,19 @@ async def lifespan(app: FastAPI):
         precheck = PrecheckWorker(engine, client, settings)
         await polling.start()
 
+    scheduler = ContestScheduler(engine)
+    await scheduler.start()
+
     app.state.polling_worker = polling
     app.state.precheck_worker = precheck
     app.state.mock_worker = mock
+    app.state.scheduler = scheduler
 
     try:
         yield
     finally:
         log.info("Shutting down workers")
-        for worker in (polling, precheck, mock):
+        for worker in (scheduler, polling, precheck, mock):
             if worker:
                 try:
                     await worker.stop()

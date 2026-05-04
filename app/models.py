@@ -52,6 +52,13 @@ class Participant(BaseModel):
     reached_current_score_at: Optional[datetime] = None
     added_at: datetime = Field(default_factory=_utcnow)
 
+    # LeetCode profile snapshot (refreshed by polling worker / on add).
+    lc_ranking: Optional[int] = None
+    lc_easy_total: int = 0
+    lc_medium_total: int = 0
+    lc_hard_total: int = 0
+    profile_fetched_at: Optional[datetime] = None
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 

@@ -1,17 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="Black">
+    <option name="sdkName" value="uv (gdg-leetcode)" />
+  </component>
   <component name="EditMigrationStateService">
     <option name="migrationStatus" value="COMPLETED" />
   </component>
-  <component name="GoImports">
-    <option name="excludedPackages">
-      <array>
-        <option value="github.com/pkg/errors" />
-        <option value="golang.org/x/net/context" />
-      </array>
-    </option>
-  </component>
-  <component name="KubernetesApiProvider">{}</component>
+  <component name="KubernetesApiProvider"><![CDATA[{}]]></component>
   <component name="ProjectRootManager" version="2" project-jdk-name="uv (gdg-leetcode)" project-jdk-type="Python SDK">
     <output url="file://$PROJECT_DIR$/out" />
   </component>

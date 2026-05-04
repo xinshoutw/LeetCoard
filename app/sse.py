@@ -44,13 +44,20 @@ class Broadcaster:
             self.subs.discard(sub)
         log.info("SSE unsubscribe sid=%s total=%d", sub.sid, len(self.subs))
 
-    def broadcast(self, event: str, data: Any, audience: str = "public") -> None:
-        """Non-blocking fanout. `audience='admin'` reaches admin subscribers only;
-        `audience='public'` reaches everyone."""
+    def broadcast(self, event: str, data: Any, audience: str = "all") -> None:
+        """Non-blocking fanout.
+
+        Audience values:
+          - "all"    : every subscriber
+          - "public" : public subscribers only (admins get admin-flavoured event instead)
+          - "admin"  : admin subscribers only
+        """
 
         payload = {"event": event, "data": data}
         for sub in list(self.subs):
             if audience == "admin" and sub.audience != "admin":
+                continue
+            if audience == "public" and sub.audience != "public":
                 continue
             try:
                 sub.queue.put_nowait(payload)
