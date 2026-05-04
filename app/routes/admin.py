@@ -200,6 +200,20 @@ async def reset_contest(body: ResetIn, request: Request, _: None = Depends(requi
         raise HTTPException(status_code=400, detail='must POST {"confirm":"RESET"}')
     engine = request.app.state.engine
     await engine.reset_contest(keep_config=body.keep_config)
+
+    # Reset clears precheck_results — auto re-run pre-check so the dashboard
+    # warning panel repopulates without the admin having to click again.
+    pre = request.app.state.precheck_worker
+    if pre is not None and engine.contest.problems and engine.contest.participants:
+        await pre.start()
+
+    # Profile fetch is also re-queued so any participants that hadn't yet
+    # received their LC ranking / E-M-H counts get refreshed cleanly.
+    polling = request.app.state.polling_worker
+    if polling is not None:
+        for u in engine.contest.participants:
+            polling.enqueue_profile_fetch(u)
+
     return {"ok": True, "status": engine.contest.status.value, "keep_config": body.keep_config}
 
 

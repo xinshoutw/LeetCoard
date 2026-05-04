@@ -28,11 +28,17 @@ function computeLayout(rows: LeaderboardRow[], width: number, height: number, st
   const placed: { row: LeaderboardRow; x: number; y: number }[] = [];
 
   if (status === "setup" || status === "precheck") {
-    // Queue them along the bottom platform — but lifted up by ~70px so the
-    // foot-labels (E/M/H counts) and head-labels both stay inside the canvas.
+    // Queue centered vertically so both head labels (rank/username/sid) and
+    // foot labels (E/M/H counts) stay clear of the canvas edges. The figure
+    // SVG is 84px tall, head label sits 64px above the motion top, footer
+    // ~24px below the SVG. Place motion top so:
+    //   head_top  = y - 64   ≥ 24   (24px breathing at top)
+    //   foot_bot  = y + 108  ≤ height - 24
+    const HEAD_RESERVE = 88;
+    const FOOT_RESERVE = 120;
+    const y = Math.max(HEAD_RESERVE, height - FOOT_RESERVE - 84);
     const queue = rows.slice().sort((a, b) => a.username.localeCompare(b.username));
-    const spacing = Math.min(110, (width - 100) / Math.max(1, queue.length));
-    const y = (TOTAL_STEPS - 1) * stepH - 90;
+    const spacing = Math.min(120, (width - 120) / Math.max(1, queue.length));
     queue.forEach((r, i) => {
       const startX = (width - spacing * (queue.length - 1)) / 2;
       placed.push({ row: r, x: startX + i * spacing - width / 2, y });
