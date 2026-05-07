@@ -3,10 +3,8 @@ import { API_BASE, streamUrl } from "../lib/api";
 import type {
   AdminSnapshot,
   LeaderboardRow,
-  PrecheckResultPayload,
   PublicSnapshot,
   SubmissionEventPayload,
-  SystemEventPayload,
 } from "../lib/types";
 
 interface ConnState {
@@ -25,9 +23,6 @@ type Action =
   | { type: "contest_status"; status: PublicSnapshot["status"]; start: string | null; end: string | null }
   | { type: "times"; start: string | null; end: string | null }
   | { type: "problems"; problems: PublicSnapshot["problems"] }
-  | { type: "polling"; row: { username: string; [k: string]: unknown } }
-  | { type: "system_event"; event: SystemEventPayload }
-  | { type: "precheck"; results: PrecheckResultPayload[] }
   | { type: "reset"; snapshot: Snapshot }
   | { type: "conn"; conn: Partial<ConnState> };
 
@@ -73,36 +68,6 @@ function reducer(state: State, action: Action): State {
       if (!state.snapshot) return state;
       return { ...state, snapshot: { ...state.snapshot, problems: action.problems } };
     }
-    case "polling": {
-      if (!state.snapshot || !("polling_status" in state.snapshot)) return state;
-      const cur = state.snapshot.polling_status[action.row.username] ?? {
-        username: action.row.username,
-        last_checked_at: null,
-        last_success_at: null,
-        last_error: null,
-        next_check_at: null,
-        consecutive_errors: 0,
-      };
-      return {
-        ...state,
-        snapshot: {
-          ...state.snapshot,
-          polling_status: {
-            ...state.snapshot.polling_status,
-            [action.row.username]: { ...cur, ...action.row } as never,
-          },
-        },
-      };
-    }
-    case "system_event": {
-      if (!state.snapshot || !("system_events" in state.snapshot)) return state;
-      const events = [...state.snapshot.system_events, action.event].slice(-100);
-      return { ...state, snapshot: { ...state.snapshot, system_events: events } };
-    }
-    case "precheck": {
-      if (!state.snapshot || !("precheck_results" in state.snapshot)) return state;
-      return { ...state, snapshot: { ...state.snapshot, precheck_results: action.results } };
-    }
     case "reset":
       return { ...state, snapshot: action.snapshot };
     case "conn":
@@ -118,6 +83,7 @@ export interface UseStreamOpts {
 export function useContestStream(opts: UseStreamOpts) {
   const [state, dispatch] = useReducer(reducer, initial);
   const reconnectRef = useRef<number | null>(null);
+  const reconnectCountRef = useRef(0);
 
   useEffect(() => {
     let es: EventSource | null = null;
@@ -147,7 +113,8 @@ export function useContestStream(opts: UseStreamOpts) {
         if (!cancelled) {
           if (reconnectRef.current) window.clearTimeout(reconnectRef.current);
           reconnectRef.current = window.setTimeout(() => {
-            dispatch({ type: "conn", conn: { reconnects: (state.conn.reconnects ?? 0) + 1 } });
+            reconnectCountRef.current += 1;
+            dispatch({ type: "conn", conn: { reconnects: reconnectCountRef.current } });
             open();
           }, 1500 + Math.random() * 1500);
         }
@@ -174,17 +141,6 @@ export function useContestStream(opts: UseStreamOpts) {
       es.addEventListener("problems_updated", (e) => {
         const d = JSON.parse((e as MessageEvent).data);
         dispatch({ type: "problems", problems: d.problems });
-      });
-      es.addEventListener("polling_status", (e) => {
-        const d = JSON.parse((e as MessageEvent).data);
-        dispatch({ type: "polling", row: d });
-      });
-      es.addEventListener("system_event", (e) =>
-        dispatch({ type: "system_event", event: JSON.parse((e as MessageEvent).data) }),
-      );
-      es.addEventListener("precheck_update", (e) => {
-        const d = JSON.parse((e as MessageEvent).data);
-        dispatch({ type: "precheck", results: d.results });
       });
       es.addEventListener("contest_reset", (e) => {
         const d = JSON.parse((e as MessageEvent).data);

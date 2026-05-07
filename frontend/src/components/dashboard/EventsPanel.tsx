@@ -13,12 +13,12 @@ const STATUS_COLOR: Record<string, string> = {
 export default function EventsPanel({ snapshot }: { snapshot: AdminSnapshot }) {
   const events = [...snapshot.events].reverse().slice(0, 80);
   return (
-    <div className="surface rounded-3xl p-5 h-full">
-      <div className="flex items-center justify-between mb-3">
+    <div className="surface rounded-3xl p-5 h-full flex flex-col min-h-0">
+      <div className="flex items-center justify-between mb-3 shrink-0">
         <h2 className="font-bold text-lg">Submission 紀錄</h2>
         <span className="text-[10px] text-ink-300">{events.length} 筆</span>
       </div>
-      <div className="max-h-72 overflow-y-auto text-[12px] font-mono">
+      <div className="flex-1 min-h-0 overflow-y-auto text-[12px] font-mono">
         {events.map((e) => {
           const colour = STATUS_COLOR[e.short_label] ?? "#9aa3c7";
           const beat = e.beat_pct != null ? `${Math.round(e.beat_pct)}%` : null;

@@ -9,7 +9,6 @@ interface Props {
 
 const STATUS_COLOR: Record<string, string> = {
   setup: "#9aa3c7",
-  precheck: "#4285F4",
   running: "#34A853",
   ended: "#FBBC04",
 };
@@ -43,10 +42,6 @@ export default function ContestPanel({ snapshot, token }: Props) {
 
   const start_ = async () => act("start", () => api("/api/admin/contest/start", { method: "POST", token }));
   const end_ = async () => act("end", () => api("/api/admin/contest/end", { method: "POST", token }));
-  const precheck = async () =>
-    act("precheck", () => api("/api/admin/precheck/run", { method: "POST", token }));
-  const rebroadcast = async () =>
-    act("rebroadcast", () => api("/api/admin/broadcast/refresh", { method: "POST", token }));
   const reset = async () => {
     if (!window.confirm("重置會清除分數、AC 狀態、submission 紀錄與事件，題目與參賽者保留。確定？")) return;
     act("reset", () =>
@@ -118,20 +113,6 @@ export default function ContestPanel({ snapshot, token }: Props) {
       <hr className="my-4 border-white/10" />
 
       <div className="grid grid-cols-2 gap-2">
-        <button
-          onClick={precheck}
-          disabled={busy === "precheck" || snapshot.status === "running" || snapshot.status === "ended"}
-          className="py-1.5 rounded bg-stage-700 hover:bg-stage-600 text-sm disabled:opacity-50"
-        >
-          執行賽前檢查
-        </button>
-        <button
-          onClick={rebroadcast}
-          disabled={busy === "rebroadcast"}
-          className="py-1.5 rounded bg-stage-700 hover:bg-stage-600 text-sm disabled:opacity-50"
-        >
-          推播刷新
-        </button>
         <button
           onClick={start_}
           disabled={busy === "start" || snapshot.status === "running" || snapshot.status === "ended"}

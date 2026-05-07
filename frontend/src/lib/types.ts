@@ -1,6 +1,6 @@
 // Mirrors backend payloads. Keep in sync with `app/state.py::snapshot_dict`.
 
-export type ContestStatus = "setup" | "precheck" | "running" | "ended";
+export type ContestStatus = "setup" | "running" | "ended";
 
 export interface BonusTier {
   min_beat_pct: number;  // 0–100, inclusive lower bound
@@ -56,34 +56,6 @@ export interface SubmissionEventPayload {
   note?: string | null;
 }
 
-export interface PrecheckResultPayload {
-  username: string;
-  student_id: string;
-  title_slug: string;
-  detected: boolean;
-  checked_at: string;
-  confidence: "full" | "partial";
-  note?: string | null;
-}
-
-export interface PollingStatusPayload {
-  username: string;
-  last_checked_at: string | null;
-  last_success_at: string | null;
-  last_error: string | null;
-  next_check_at: string | null;
-  consecutive_errors: number;
-}
-
-export interface SystemEventPayload {
-  id: string;
-  at: string;
-  level: "info" | "warn" | "error";
-  kind: string;
-  message: string;
-  detail?: Record<string, string> | null;
-}
-
 export interface ParticipantAdminPayload {
   username: string;
   student_id: string;
@@ -106,7 +78,4 @@ export interface PublicSnapshot {
 
 export interface AdminSnapshot extends PublicSnapshot {
   participants_admin: Record<string, ParticipantAdminPayload>;
-  precheck_results: PrecheckResultPayload[];
-  polling_status: Record<string, PollingStatusPayload>;
-  system_events: SystemEventPayload[];
 }

@@ -7,19 +7,56 @@ interface Props {
   token: string;
 }
 
+interface Row {
+  username: string;
+  student_id: string;
+  _key: string;
+}
+
+function makeRow(): Row {
+  return {
+    username: "",
+    student_id: "",
+    _key: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+  };
+}
+
+const EMPTY_ROWS = (): Row[] => [makeRow()];
+
 export default function ParticipantsPanel({ snapshot, token }: Props) {
   const locked = snapshot.status === "running" || snapshot.status === "ended";
   const list = Object.values(snapshot.participants_admin);
 
-  const [text, setText] = useState("");
+  const [rows, setRows] = useState<Row[]>(EMPTY_ROWS);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  const update = (i: number, patch: Partial<Row>) =>
+    setRows((current) => {
+      const next = current.map((r, idx) => (idx === i ? { ...r, ...patch } : r));
+      // Auto-grow: if the LAST row now has any content, append a fresh blank row.
+      const last = next[next.length - 1];
+      if (last && (last.username.trim() || last.student_id.trim())) {
+        next.push(makeRow());
+      }
+      return next;
+    });
+
+  const removeRow = (i: number) =>
+    setRows((current) => {
+      const next = current.filter((_, idx) => idx !== i);
+      return next.length ? next : EMPTY_ROWS();
+    });
+
   const submit = async () => {
-    if (!text.trim()) return;
+    const filled = rows.filter((r) => r.username.trim() && r.student_id.trim());
+    if (filled.length === 0) return;
     setBusy(true);
     setMsg(null);
     try {
+      const text = filled
+        .map((r) => `${r.username.trim()},${r.student_id.trim()}`)
+        .join("\n");
       const res = await api<{ ok: true; created: number; updated: number; errors: string[] }>(
         "/api/admin/participants/bulk",
         { method: "PUT", token, body: JSON.stringify({ text }) },
@@ -29,7 +66,7 @@ export default function ParticipantsPanel({ snapshot, token }: Props) {
         ok: true,
         text: `新增 ${res.created} · 更新 ${res.updated}${errSummary}`,
       });
-      if (!res.errors.length) setText("");
+      if (!res.errors.length) setRows(EMPTY_ROWS());
     } catch (e) {
       setMsg({ ok: false, text: e instanceof ApiError ? `${e.status}: ${e.message}` : String(e) });
     }
@@ -49,24 +86,51 @@ export default function ParticipantsPanel({ snapshot, token }: Props) {
   };
 
   return (
-    <div className="surface rounded-3xl p-5 h-full">
-      <div className="flex items-center justify-between mb-4">
+    <div className="surface rounded-3xl p-5 h-full flex flex-col min-h-0">
+      <div className="flex items-center justify-between mb-3 shrink-0">
         <h2 className="font-bold text-lg">參賽者</h2>
         <span className="text-[10px] text-ink-300">共 {list.length} 人</span>
       </div>
 
-      <div className="text-[11px] text-ink-300 mb-1">
-        批量新增：每行一筆 <code className="font-mono text-ink-200">username,student_id</code>
+      <div className="shrink-0 space-y-1 max-h-48 overflow-y-auto pr-1">
+        <div className="grid grid-cols-[1fr_1fr_24px] gap-2 text-[10px] text-ink-300 px-1">
+          <span>username</span>
+          <span>nickname</span>
+          <span></span>
+        </div>
+        {rows.map((r, i) => (
+          <div key={r._key} className="grid grid-cols-[1fr_1fr_24px] gap-2 items-center">
+            <input
+              value={r.username}
+              onChange={(e) => update(i, { username: e.target.value })}
+              disabled={locked}
+              placeholder={i === 0 ? "xinshoutw" : ""}
+              className="px-2 py-1 rounded bg-stage-900/50 border border-white/10 text-sm font-mono disabled:opacity-50"
+            />
+            <input
+              value={r.student_id}
+              onChange={(e) => update(i, { student_id: e.target.value })}
+              disabled={locked}
+              placeholder={i === 0 ? "B11315009" : ""}
+              className="px-2 py-1 rounded bg-stage-900/50 border border-white/10 text-sm font-mono disabled:opacity-50"
+            />
+            {(r.username || r.student_id) ? (
+              <button
+                onClick={() => removeRow(i)}
+                disabled={locked}
+                title="刪除此列"
+                className="text-ink-300 hover:text-g-red disabled:opacity-30"
+              >
+                ×
+              </button>
+            ) : (
+              <span />
+            )}
+          </div>
+        ))}
       </div>
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={4}
-        disabled={locked}
-        placeholder={"alice,B11000001\nbob,B11000002"}
-        className="w-full px-2 py-1 rounded bg-stage-900/50 border border-white/10 font-mono text-sm disabled:opacity-50"
-      />
-      <div className="mt-2 flex items-center gap-2">
+
+      <div className="mt-3 flex items-center gap-2 shrink-0">
         <button
           onClick={submit}
           disabled={busy || locked}
@@ -78,9 +142,9 @@ export default function ParticipantsPanel({ snapshot, token }: Props) {
         {msg && <span className={"text-xs " + (msg.ok ? "text-g-green" : "text-g-red")}>{msg.text}</span>}
       </div>
 
-      <hr className="my-4 border-white/10" />
+      <hr className="my-3 border-white/10 shrink-0" />
 
-      <div className="max-h-56 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto pr-1">
         {list.map((p) => (
           <div key={p.username} className="flex items-center justify-between py-1 text-sm border-b border-white/5">
             <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -93,7 +157,9 @@ export default function ParticipantsPanel({ snapshot, token }: Props) {
                 onClick={() => remove(p.username)}
                 className="ml-2 text-ink-300 hover:text-g-red"
                 title="刪除"
-              >×</button>
+              >
+                ×
+              </button>
             )}
           </div>
         ))}
