@@ -47,6 +47,7 @@ class Problem(BaseModel):
     points: int = Field(ge=0)
     order: int = Field(ge=0)
     title: Optional[str] = None  # cached display name from /problem/{slug}
+    frontend_id: Optional[str] = None  # LeetCode official problem number, e.g. "1", "1768"
     color: Optional[str] = None  # css colour for status pip; defaults from difficulty
     beat_bonus_tiers: List[BonusTier] = Field(default_factory=list)
 

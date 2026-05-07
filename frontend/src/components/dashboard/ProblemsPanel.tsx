@@ -155,13 +155,13 @@ export default function ProblemsPanel({ snapshot, token }: Props) {
   const onPick = async (i: number, slug: string, title: string) => {
     update(i, { title_slug: slug, title });
     try {
-      const detail = await api<{ title: string; difficulty: Difficulty }>(
+      const detail = await api<{ title: string; difficulty: Difficulty; frontend_id?: string | null }>(
         `/api/admin/leetcode/problem/${encodeURIComponent(slug)}`,
         { token },
       );
       applyDifficulty(i, detail.difficulty);
-      // Apply canonical title from upstream too in case search returned a stale name.
-      update(i, { title: detail.title });
+      // Apply canonical title + LeetCode official number from upstream.
+      update(i, { title: detail.title, frontend_id: detail.frontend_id ?? null });
     } catch {
       // Silent fallback: keep whatever defaults the row already has.
     }
@@ -178,6 +178,7 @@ export default function ProblemsPanel({ snapshot, token }: Props) {
           points: Number(p.points) || 0,
           order: i,
           title: p.title ?? null,
+          frontend_id: p.frontend_id ?? null,
           beat_bonus_tiers: p.beat_bonus_tiers.map((t) => ({
             min_beat_pct: Number(t.min_beat_pct),
             bonus_pts: Number(t.bonus_pts),

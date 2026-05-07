@@ -13,6 +13,7 @@ export interface ProblemPayload {
   points: number;
   order: number;
   title?: string | null;
+  frontend_id?: string | null;
   color?: string | null;
   beat_bonus_tiers?: BonusTier[];
 }

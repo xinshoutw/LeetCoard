@@ -117,6 +117,7 @@ export default function ProblemBoard({ problems, events, leaderboard, status }: 
             key={p.title_slug}
             problem={p}
             solvers={buildSolvers(p, events, rowByUser)}
+            blurTitle={status === "setup"}
           />
         ))}
       </div>
@@ -127,11 +128,13 @@ export default function ProblemBoard({ problems, events, leaderboard, status }: 
 interface CardProps {
   problem: ProblemPayload;
   solvers: Solver[];
+  blurTitle: boolean;
 }
 
-function ProblemCard({ problem, solvers }: CardProps) {
+function ProblemCard({ problem, solvers, blurTitle }: CardProps) {
   const diffColor = difficultyColor(problem.difficulty);
   const title = problem.title || problem.title_slug;
+  const number = problem.frontend_id ?? "—";
   const top = solvers[0];
 
   return (
@@ -152,7 +155,14 @@ function ProblemCard({ problem, solvers }: CardProps) {
         >
           {DIFF_LABEL[problem.difficulty]}
         </span>
-        <h3 className="font-display font-black text-xl tracking-tight truncate flex-1">
+        <h3
+          className={
+            "font-display font-black text-xl tracking-tight truncate flex-1 transition-[filter] duration-500 " +
+            (blurTitle ? "blur-md select-none" : "")
+          }
+          aria-hidden={blurTitle}
+        >
+          <span className="font-mono text-ink-300 mr-2">#{number}</span>
           {title}
         </h3>
         <span className="font-mono tabular text-sm text-ink-300">

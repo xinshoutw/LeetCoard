@@ -42,6 +42,7 @@ class ProblemIn(BaseModel):
     points: int = Field(ge=0)
     order: int = Field(ge=0)
     title: Optional[str] = None
+    frontend_id: Optional[str] = None
     color: Optional[str] = None
     beat_bonus_tiers: List[BonusTierIn] = Field(default_factory=list)
 
@@ -100,10 +101,17 @@ async def leetcode_problem(
     raw_diff = (data.get("difficulty") or "").strip().lower()
     if raw_diff not in ("easy", "medium", "hard"):
         raise HTTPException(status_code=502, detail=f"unexpected difficulty: {raw_diff!r}")
+    raw_fid = (
+        data.get("questionFrontendId")
+        or data.get("frontend_id")
+        or data.get("questionId")
+        or data.get("id")
+    )
     return {
         "title_slug": slug,
         "title": data.get("title") or slug,
         "difficulty": raw_diff,
+        "frontend_id": str(raw_fid) if raw_fid is not None else None,
     }
 
 
@@ -150,8 +158,27 @@ async def set_times(body: TimesIn, request: Request, _: None = Depends(require_a
 @router.put("/problems")
 async def set_problems(body: ProblemsIn, request: Request, _: None = Depends(require_admin)) -> dict:
     engine = request.app.state.engine
+    client = request.app.state.lc_client
+    problems: list[Problem] = []
+    for p in body.problems:
+        prob = Problem(**p.model_dump())
+        if not prob.frontend_id:
+            try:
+                data = await client.get_problem(prob.title_slug)
+                raw_fid = (
+                    data.get("questionFrontendId")
+                    or data.get("frontend_id")
+                    or data.get("questionId")
+                    or data.get("id")
+                )
+                if raw_fid is not None:
+                    prob.frontend_id = str(raw_fid)
+                if not prob.title:
+                    prob.title = data.get("title") or prob.title_slug
+            except Exception:
+                pass  # best-effort; missing id is OK
+        problems.append(prob)
     try:
-        problems = [Problem(**p.model_dump()) for p in body.problems]
         added, removed = await engine.set_problems(problems)
     except (ValueError, StartLockError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
