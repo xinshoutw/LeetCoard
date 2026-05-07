@@ -55,6 +55,9 @@ async def lifespan(app: FastAPI):
     app.state.polling_worker = polling
     app.state.scheduler = scheduler
 
+    # Best-effort one-shot backfill: legacy problems may lack frontend_id.
+    asyncio.create_task(engine.backfill_problem_metadata(client.get_problem))
+
     try:
         yield
     finally:

@@ -193,6 +193,45 @@ class ContestEngine:
             last_score = p.score
         return plist
 
+    async def backfill_problem_metadata(self, fetch) -> None:
+        """Best-effort fill of frontend_id/title for problems missing them.
+        `fetch(slug)` is an async callable returning a dict with
+        questionFrontendId/title (or returns None / raises on failure).
+        Broadcasts a problems_updated event when anything changed."""
+        targets = [
+            p for p in self.contest.problems
+            if not p.frontend_id or not p.title
+        ]
+        if not targets:
+            return
+        changed = False
+        for prob in targets:
+            try:
+                data = await fetch(prob.title_slug)
+            except Exception:
+                continue
+            if not isinstance(data, dict):
+                continue
+            raw_fid = (
+                data.get("questionFrontendId")
+                or data.get("frontend_id")
+                or data.get("questionId")
+                or data.get("id")
+            )
+            if raw_fid is not None and not prob.frontend_id:
+                prob.frontend_id = str(raw_fid)
+                changed = True
+            new_title = data.get("title")
+            if new_title and not prob.title:
+                prob.title = new_title
+                changed = True
+        if changed:
+            async with self._lock:
+                self._flag_dirty_and_broadcast(
+                    "problems_updated",
+                    {"problems": [p.model_dump(mode="json") for p in self.contest.problems]},
+                )
+
     # -------- state transitions --------
 
     def _ensure_unlocked(self, what: str) -> None:

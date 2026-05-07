@@ -85,6 +85,19 @@ async def leetcode_search(
     return {"results": results}
 
 
+@router.post("/problems/refresh-metadata")
+async def refresh_problem_metadata(
+    request: Request,
+    _: None = Depends(require_admin),
+) -> dict:
+    """Trigger best-effort backfill of frontend_id / title for all configured
+    problems. Useful when legacy entries pre-date the frontend_id feature."""
+    engine = request.app.state.engine
+    client = request.app.state.lc_client
+    await engine.backfill_problem_metadata(client.get_problem)
+    return {"ok": True, "count": len(engine.contest.problems)}
+
+
 @router.get("/leetcode/problem/{slug}")
 async def leetcode_problem(
     slug: str,
