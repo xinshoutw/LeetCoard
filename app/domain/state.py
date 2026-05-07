@@ -97,6 +97,22 @@ class ContestEngine:
         self._store.mark_dirty()
         self._bc.broadcast(event, data, audience=audience)
 
+    def _problems_for_audience(self, audience: str) -> List[dict]:
+        sorted_probs = sorted(self.contest.problems, key=lambda p: p.order)
+        if audience == "admin" or self.contest.status != ContestStatus.setup:
+            return [p.model_dump(mode="json") for p in sorted_probs]
+        # Public + setup: hide identifying fields. Keep difficulty/points so the
+        # scoreboard can size the card grid, but mask slug/title/frontend_id so
+        # spectators can't preview the set before the start signal.
+        out: List[dict] = []
+        for idx, p in enumerate(sorted_probs):
+            d = p.model_dump(mode="json")
+            d["title"] = None
+            d["frontend_id"] = None
+            d["title_slug"] = f"__hidden_{idx}__"
+            out.append(d)
+        return out
+
     def snapshot_dict(self, audience: str = "public") -> dict:
         """Full state for new SSE subscribers."""
         c = self.contest
@@ -105,7 +121,7 @@ class ContestEngine:
             "start_time": c.start_time.isoformat() if c.start_time else None,
             "end_time": c.end_time.isoformat() if c.end_time else None,
             "server_time": _utcnow().isoformat(),
-            "problems": [p.model_dump(mode="json") for p in sorted(c.problems, key=lambda p: p.order)],
+            "problems": self._problems_for_audience(audience),
             "leaderboard": self._leaderboard_snapshot(),
             "events": [e.model_dump(mode="json") for e in c.events[-200:]],
         }
@@ -117,6 +133,20 @@ class ContestEngine:
 
     def _push_leaderboard(self) -> None:
         self._bc.broadcast("leaderboard_update", {"leaderboard": self._leaderboard_snapshot()})
+
+    def _broadcast_problems(self) -> None:
+        """Send problems_updated to admin (real data) and public (masked
+        during setup, real once running/ended)."""
+        self._bc.broadcast(
+            "problems_updated",
+            {"problems": self._problems_for_audience("admin")},
+            audience="admin",
+        )
+        self._bc.broadcast(
+            "problems_updated",
+            {"problems": self._problems_for_audience("public")},
+            audience="public",
+        )
 
     def _broadcast_participants_admin(self) -> None:
         self._store.mark_dirty()
@@ -227,10 +257,8 @@ class ContestEngine:
                 changed = True
         if changed:
             async with self._lock:
-                self._flag_dirty_and_broadcast(
-                    "problems_updated",
-                    {"problems": [p.model_dump(mode="json") for p in self.contest.problems]},
-                )
+                self._store.mark_dirty()
+                self._broadcast_problems()
 
     # -------- state transitions --------
 
@@ -258,10 +286,8 @@ class ContestEngine:
             added = sorted(new_slugs - old_slugs)
             removed = sorted(old_slugs - new_slugs)
             self.contest.problems = sorted(problems, key=lambda p: p.order)
-            self._flag_dirty_and_broadcast(
-                "problems_updated",
-                {"problems": [p.model_dump(mode="json") for p in self.contest.problems]},
-            )
+            self._store.mark_dirty()
+            self._broadcast_problems()
         return added, removed
 
     async def upsert_participants(self, rows: List[Tuple[str, str]]) -> Tuple[int, int, List[str], List[str]]:
@@ -359,6 +385,8 @@ class ContestEngine:
             self.contest.status = ContestStatus.running
             self.contest.last_started_at = _utcnow()
         await self.set_status(ContestStatus.running)
+        # Reveal problems to the public stream now that the contest is live.
+        self._broadcast_problems()
         await self._store.flush_now()
 
     async def end_contest(self) -> None:

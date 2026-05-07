@@ -133,8 +133,9 @@ interface CardProps {
 
 function ProblemCard({ problem, solvers, blurTitle }: CardProps) {
   const diffColor = difficultyColor(problem.difficulty);
-  const title = problem.title || problem.title_slug;
-  const number = problem.frontend_id ?? "—";
+  const masked = blurTitle || !problem.title;
+  const title = masked ? "— — — — —" : (problem.title as string);
+  const number = masked ? "—" : (problem.frontend_id ?? "—");
   const top = solvers[0];
 
   return (
@@ -157,10 +158,10 @@ function ProblemCard({ problem, solvers, blurTitle }: CardProps) {
         </span>
         <h3
           className={
-            "font-display font-black text-xl tracking-tight truncate flex-1 transition-[filter] duration-500 " +
-            (blurTitle ? "blur-md select-none" : "")
+            "font-display font-black text-xl tracking-tight truncate flex-1 " +
+            (masked ? "text-ink-300 select-none" : "")
           }
-          aria-hidden={blurTitle}
+          aria-hidden={masked}
         >
           <span className="font-mono text-ink-300 mr-2">#{number}</span>
           {title}

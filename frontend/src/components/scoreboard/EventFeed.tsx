@@ -37,7 +37,6 @@ export default function EventFeed({ events, problems }: Props) {
           <div className="size-2 rounded-full bg-g-red animate-pulse" />
           <h2 className="font-display font-bold text-lg tracking-wide">即時事件</h2>
         </div>
-        <span className="text-[10px] text-ink-300 font-mono">最新 {recent.length} 筆</span>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
         <AnimatePresence initial={false}>

@@ -10,9 +10,9 @@ interface Props {
 }
 
 const STATUS_LABEL: Record<ContestStatus, { text: string; color: string }> = {
-  setup: { text: "尚未開始 · SETUP", color: "#9aa3c7" },
-  running: { text: "比賽進行中 · RUNNING", color: "#34A853" },
-  ended: { text: "比賽結束 · ENDED", color: "#FBBC04" },
+  setup: { text: "尚未開始", color: "#9aa3c7" },
+  running: { text: "比賽進行中", color: "#34A853" },
+  ended: { text: "比賽結束", color: "#FBBC04" },
 };
 
 export default function Header({ status, startTime, endTime, connected }: Props) {
