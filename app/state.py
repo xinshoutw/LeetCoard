@@ -503,8 +503,6 @@ class ContestEngine:
                 bonus_delta = 0
                 beat_pct: Optional[float] = None
                 note: Optional[str] = None
-                if is_accepted:
-                    log.debug("AC submission fields for %s/%s: %s", username, slug, list(sub.keys()))
 
                 # Time-window gating — even AC outside window does not score.
                 in_window = (

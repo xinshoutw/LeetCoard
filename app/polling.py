@@ -160,11 +160,33 @@ class PollingWorker:
                 log.exception("Polling loop hiccup; sleeping 2s")
                 await asyncio.sleep(2)
 
+    async def _enrich_runtime_percentile(self, subs: list[dict]) -> None:
+        """Best-effort: inject `runtimePercentile` into new AC submissions.
+
+        leetcode-api-pied's submission list lacks beat-%; we fetch each new AC's
+        detail via LeetCode GraphQL. Skips already-seen ids to bound API load.
+        Any failure is silent — beat-% bonus simply doesn't apply for that submission.
+        """
+        seen = self._engine.contest.seen_submission_ids
+        targets = [
+            s for s in subs
+            if (s.get("statusDisplay") or s.get("status")) == "Accepted"
+            and "runtimePercentile" not in s
+            and str(s.get("id") or "") not in seen
+            and s.get("id") is not None
+        ]
+        for s in targets:
+            sub_id = str(s["id"])
+            pct = await self._client.get_submission_runtime_percentile(sub_id)
+            if pct is not None:
+                s["runtimePercentile"] = pct
+
     async def _poll_one(self, username: str) -> None:
         try:
             subs = await self._client.get_recent_submissions(
                 username, limit=self._cfg.poll_recent_limit
             )
+            await self._enrich_runtime_percentile(subs)
             await self._engine.ingest_submissions(username, subs)
             await self._engine.update_polling(
                 username,

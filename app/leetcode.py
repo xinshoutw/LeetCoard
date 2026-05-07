@@ -155,6 +155,66 @@ class LeetCodeClient:
         data = await self._get(f"/user/{username}/submissions", params={"limit": limit})
         return _coerce_submission_list(data)
 
+    async def get_submission_runtime_percentile(self, submission_id: str) -> Optional[float]:
+        """Fetch the runtime beat percentile for an AC submission via LeetCode's GraphQL API.
+
+        Returns None when no session cookie is configured, the submission has no
+        percentile yet, or any failure. Best-effort enrichment — never raises.
+        Rate-limit / network errors cool down the picked session like other calls.
+        """
+        if not self._client or not self._states:
+            return None
+        try:
+            sid_int = int(submission_id)
+        except (TypeError, ValueError):
+            return None
+        sess = await self._pick_session()
+        if not sess:
+            return None
+        payload = {
+            "operationName": "submissionDetails",
+            "variables": {"submissionId": sid_int},
+            "query": (
+                "query submissionDetails($submissionId: Int!) {"
+                " submissionDetails(submissionId: $submissionId) { runtimePercentile }"
+                " }"
+            ),
+        }
+        headers = {
+            "content-type": "application/json",
+            "origin": "https://leetcode.com",
+            "referer": f"https://leetcode.com/submissions/detail/{sid_int}/",
+            "user-agent": "Mozilla/5.0",
+            "cookie": f"LEETCODE_SESSION={sess.cookie}",
+        }
+        try:
+            resp = await self._client.post(
+                "https://leetcode.com/graphql/", json=payload, headers=headers,
+            )
+        except (httpx.RequestError, asyncio.TimeoutError) as exc:
+            self._cool(sess, 30)
+            log.debug("graphql submissionDetails network: %s: %s", type(exc).__name__, exc)
+            return None
+        if resp.status_code == 429:
+            self._cool(sess, 60)
+            return None
+        if resp.status_code >= 400:
+            return None
+        try:
+            data = resp.json()
+        except ValueError:
+            return None
+        details = ((data or {}).get("data") or {}).get("submissionDetails") or {}
+        pct = details.get("runtimePercentile")
+        if pct is None:
+            return None
+        try:
+            f = float(pct)
+        except (TypeError, ValueError):
+            return None
+        self._ok(sess)
+        return f if 0.0 <= f <= 100.0 else None
+
     async def get_solved_slugs(self, username: str) -> tuple[set[str], bool]:
         """Returns (solved_slug_set, is_full).
 
