@@ -18,24 +18,28 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function EventFeed({ events, problems }: Props) {
-  // Per spec: only the FIRST AC per (user, problem) is shown.
-  // - Scoring AC events are kept (they're already first-AC by construction).
-  // - Non-AC events (WA, TLE, RE, ...) are kept as failure feedback.
-  // - AC events that aren't scoring (already-solved replays, outside-window) are dropped.
-  const visible = events.filter((e) => (e.is_accepted ? e.is_scoring : true));
+  // Public scoreboard: only tracked problems, and AC events that scored
+  // (skip already-solved replays / outside-window). Non-AC failures still
+  // show as feedback. Overflow ACs are kept so spectators see continued
+  // attempts but they're visually demoted.
+  const visible = events.filter((e) => {
+    if (!e.is_tracked) return false;
+    if (e.is_accepted) return e.is_scoring || e.is_overflow;
+    return true;
+  });
   const recent = visible.slice(-40).reverse();
   const diffByGslug = new Map(problems.map((p) => [p.title_slug, p.difficulty]));
 
   return (
     <div className="surface rounded-3xl h-full flex flex-col overflow-hidden">
-      <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between">
+      <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <div className="size-2 rounded-full bg-g-red animate-pulse" />
           <h2 className="font-display font-bold text-lg tracking-wide">即時事件</h2>
         </div>
         <span className="text-[10px] text-ink-300 font-mono">最新 {recent.length} 筆</span>
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         <AnimatePresence initial={false}>
           {recent.map((e) => (
             <motion.div
@@ -46,7 +50,7 @@ export default function EventFeed({ events, problems }: Props) {
               exit={{ opacity: 0, x: 28 }}
               transition={{ type: "spring", stiffness: 200, damping: 24 }}
               className={
-                "px-4 py-2 border-b border-white/5 " +
+                "px-3 py-3 border-b border-white/5 " +
                 (e.is_scoring ? "bg-g-green/10" : "bg-transparent")
               }
             >
@@ -73,47 +77,64 @@ function Item({ e, difficulty }: { e: SubmissionEventPayload; difficulty?: Probl
   });
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="text-[10px] font-mono text-ink-300 w-16 tabular">{time}</div>
-      <span
-        className="px-1.5 py-0.5 rounded text-[10px] font-bold tabular"
+    <div className="grid grid-cols-[56px_minmax(0,1fr)_auto] gap-3 items-center">
+      {/* LEFT: status badge, larger */}
+      <div
+        className="size-12 rounded-xl flex items-center justify-center text-sm font-black tabular"
         style={{
           background: e.is_accepted ? statusFill : "transparent",
           color: e.is_accepted ? "#070b1f" : statusFill,
-          border: e.is_accepted ? "none" : `1px solid ${statusFill}`,
+          border: e.is_accepted ? "none" : `2px solid ${statusFill}`,
         }}
       >
         {e.short_label}
-      </span>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1 text-[12px] truncate">
-          <span className="font-bold" style={{ color: colour }}>
+      </div>
+
+      {/* MIDDLE: username + title (bigger) */}
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 text-[12px]">
+          <span className="font-bold truncate" style={{ color: colour }}>
             {e.username}
           </span>
-          <span className="text-ink-300/70">·</span>
-          <span className="text-ink-300 font-mono">{e.student_id}</span>
+          <span className="text-ink-300/60">·</span>
+          <span className="text-ink-300 font-mono text-[11px] truncate">{e.student_id}</span>
         </div>
-        <div className="text-[11px] text-ink-200 truncate flex items-center gap-1">
+        <div className="text-[16px] font-bold leading-snug truncate flex items-center gap-1.5">
           {difficulty && (
             <span
-              className="inline-block size-1.5 rounded-full"
+              className="inline-block size-2 rounded-full shrink-0"
               style={{ background: difficultyColor(difficulty) }}
             />
           )}
-          {e.title || e.title_slug}
+          <span className="truncate">{e.title || e.title_slug}</span>
+          {e.is_overflow && (
+            <span
+              className="text-ink-300/60 text-sm shrink-0"
+              title="超過前 3 次 AC，未採計"
+              aria-label="not counted"
+            >
+              ⊘
+            </span>
+          )}
         </div>
       </div>
-      {e.beat_pct != null && (
-        <span className="text-g-blue text-[10px] font-mono tabular">★{Math.round(e.beat_pct)}%</span>
-      )}
-      {e.is_scoring && (
-        <span className="text-g-green text-[12px] font-black tabular">
-          +{e.points_delta}
-          {e.bonus_delta > 0 && (
-            <span className="text-[9px] text-g-blue/80 ml-0.5">(+{e.bonus_delta})</span>
-          )}
-        </span>
-      )}
+
+      {/* RIGHT: score chip + time */}
+      <div className="flex flex-col items-end gap-1 shrink-0 min-w-[64px]">
+        {e.is_scoring ? (
+          <div className="text-[22px] font-black text-g-green tabular leading-none">
+            +{e.points_delta}
+            {e.bonus_delta > 0 && (
+              <span className="ml-1 text-[12px] text-g-blue/80 font-bold">(+{e.bonus_delta})</span>
+            )}
+          </div>
+        ) : e.beat_pct != null ? (
+          <span className="text-g-blue text-[12px] font-mono tabular">★{Math.round(e.beat_pct)}%</span>
+        ) : (
+          <span />
+        )}
+        <span className="text-[9px] font-mono tabular text-ink-300/60">{time}</span>
+      </div>
     </div>
   );
 }
