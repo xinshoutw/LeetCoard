@@ -11,14 +11,15 @@ import json
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from ..auth import admin_token_for_sse, require_admin
-from ..models import ContestStatus, Difficulty, Problem
-from ..state import StartLockError
-from ..sse import broadcaster
+from ..core.auth import admin_token_for_sse, require_admin
+from ..core.sse import broadcaster
+from ..domain.models import Difficulty, Problem
+from ..domain.state import StartLockError
+
 
 router = APIRouter()
 
@@ -30,13 +31,20 @@ class TimesIn(BaseModel):
     end_time: Optional[datetime] = None
 
 
+class BonusTierIn(BaseModel):
+    min_beat_pct: float = Field(ge=0.0, le=100.0)
+    bonus_pts: int = Field(ge=0)
+
+
 class ProblemIn(BaseModel):
     title_slug: str
     difficulty: Difficulty
     points: int = Field(ge=0)
     order: int = Field(ge=0)
     title: Optional[str] = None
+    frontend_id: Optional[str] = None
     color: Optional[str] = None
+    beat_bonus_tiers: List[BonusTierIn] = Field(default_factory=list)
 
 
 class ProblemsIn(BaseModel):
@@ -57,6 +65,21 @@ class ResetIn(BaseModel):
 @router.get("/auth/check")
 async def auth_check(_: None = Depends(require_admin)) -> dict:
     return {"ok": True}
+
+
+# ---- Problems metadata refresh ---------------------------------------------
+
+@router.post("/problems/refresh-metadata")
+async def refresh_problem_metadata(
+    request: Request,
+    _: None = Depends(require_admin),
+) -> dict:
+    """Trigger best-effort backfill of frontend_id / title for all configured
+    problems. Useful when legacy entries pre-date the frontend_id feature."""
+    engine = request.app.state.engine
+    client = request.app.state.lc_client
+    await engine.backfill_problem_metadata(client.get_problem)
+    return {"ok": True, "count": len(engine.contest.problems)}
 
 
 # ---- Snapshot + stream ------------------------------------------------------
@@ -102,17 +125,30 @@ async def set_times(body: TimesIn, request: Request, _: None = Depends(require_a
 @router.put("/problems")
 async def set_problems(body: ProblemsIn, request: Request, _: None = Depends(require_admin)) -> dict:
     engine = request.app.state.engine
+    client = request.app.state.lc_client
+    problems: list[Problem] = []
+    for p in body.problems:
+        prob = Problem(**p.model_dump())
+        if not prob.frontend_id:
+            try:
+                data = await client.get_problem(prob.title_slug)
+                raw_fid = (
+                    data.get("questionFrontendId")
+                    or data.get("frontend_id")
+                    or data.get("questionId")
+                    or data.get("id")
+                )
+                if raw_fid is not None:
+                    prob.frontend_id = str(raw_fid)
+                if not prob.title:
+                    prob.title = data.get("title") or prob.title_slug
+            except Exception:
+                pass  # best-effort; missing id is OK
+        problems.append(prob)
     try:
-        problems = [Problem(**p.model_dump()) for p in body.problems]
         added, removed = await engine.set_problems(problems)
     except (ValueError, StartLockError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-
-    # Auto re-run pre-check for every participant against newly added problems.
-    pre = request.app.state.precheck_worker
-    if pre is not None and added and engine.contest.participants:
-        pairs = [(u, s) for u in engine.contest.participants for s in added]
-        await pre.start(only_new_problems_for=pairs)
 
     return {"ok": True, "count": len(problems), "added": added, "removed": removed}
 
@@ -145,12 +181,6 @@ async def bulk_upsert(body: ParticipantsBulkIn, request: Request, _: None = Depe
     if polling is not None:
         for u in new_users:
             polling.enqueue_profile_fetch(u)
-
-    # Auto-run pre-check for new users against all current problems.
-    pre = request.app.state.precheck_worker
-    if pre is not None and new_users and engine.contest.problems:
-        pairs = [(u, p.title_slug) for u in new_users for p in engine.contest.problems]
-        await pre.start(only_new_problems_for=pairs)
 
     return {
         "ok": True,
@@ -201,34 +231,11 @@ async def reset_contest(body: ResetIn, request: Request, _: None = Depends(requi
     engine = request.app.state.engine
     await engine.reset_contest(keep_config=body.keep_config)
 
-    # Reset clears precheck_results — auto re-run pre-check so the dashboard
-    # warning panel repopulates without the admin having to click again.
-    pre = request.app.state.precheck_worker
-    if pre is not None and engine.contest.problems and engine.contest.participants:
-        await pre.start()
-
-    # Profile fetch is also re-queued so any participants that hadn't yet
-    # received their LC ranking / E-M-H counts get refreshed cleanly.
+    # Re-queue profile fetch so any participants that hadn't yet received their
+    # LC ranking / E-M-H counts get refreshed cleanly after reset.
     polling = request.app.state.polling_worker
     if polling is not None:
         for u in engine.contest.participants:
             polling.enqueue_profile_fetch(u)
 
     return {"ok": True, "status": engine.contest.status.value, "keep_config": body.keep_config}
-
-
-@router.post("/precheck/run")
-async def run_precheck(request: Request, _: None = Depends(require_admin)) -> dict:
-    pre = request.app.state.precheck_worker
-    if pre is None:
-        raise HTTPException(status_code=503, detail="precheck worker not running (mock mode?)")
-    await pre.start(transition_status=True)
-    return {"ok": True}
-
-
-@router.post("/broadcast/refresh")
-async def force_rebroadcast(request: Request, _: None = Depends(require_admin)) -> dict:
-    engine = request.app.state.engine
-    broadcaster.broadcast("snapshot", engine.snapshot_dict(audience="public"))
-    broadcaster.broadcast("snapshot", engine.snapshot_dict(audience="admin"), audience="admin")
-    return {"ok": True}

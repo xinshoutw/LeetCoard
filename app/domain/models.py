@@ -20,7 +20,6 @@ def _utcnow() -> datetime:
 
 class ContestStatus(str, Enum):
     setup = "setup"
-    precheck = "precheck"
     running = "running"
     ended = "ended"
 
@@ -31,13 +30,26 @@ class Difficulty(str, Enum):
     hard = "hard"
 
 
+class BonusTier(BaseModel):
+    """One bracket in the runtime-beat-% bonus table.
+
+    Example: BonusTier(min_beat_pct=95.0, bonus_pts=3) awards +3 points
+    when the submission beats ≥ 95 % of LeetCode runtime submissions.
+    """
+
+    min_beat_pct: float = Field(ge=0.0, le=100.0)
+    bonus_pts: int = Field(ge=0)
+
+
 class Problem(BaseModel):
     title_slug: str
     difficulty: Difficulty
     points: int = Field(ge=0)
     order: int = Field(ge=0)
     title: Optional[str] = None  # cached display name from /problem/{slug}
+    frontend_id: Optional[str] = None  # LeetCode official problem number, e.g. "1", "1768"
     color: Optional[str] = None  # css colour for status pip; defaults from difficulty
+    beat_bonus_tiers: List[BonusTier] = Field(default_factory=list)
 
 
 class Participant(BaseModel):
@@ -49,6 +61,9 @@ class Participant(BaseModel):
     rank: int = 0
     solved_problems: Set[str] = Field(default_factory=set)
     problem_first_ac_at: Dict[str, datetime] = Field(default_factory=dict)
+    problem_bonus_pts: Dict[str, int] = Field(default_factory=dict)  # current bonus per problem (upgradable)
+    problem_best_beat_pct: Dict[str, float] = Field(default_factory=dict)  # best beat% seen so far
+    problem_ac_count: Dict[str, int] = Field(default_factory=dict)  # in-window AC count per problem
     reached_current_score_at: Optional[datetime] = None
     added_at: datetime = Field(default_factory=_utcnow)
 
@@ -86,40 +101,14 @@ class SubmissionEvent(BaseModel):
     short_label: str  # AC, WA, TLE, RE, CE, MLE, OLE, ...
     submitted_at: datetime
     detected_at: datetime = Field(default_factory=_utcnow)
-    points_delta: int = 0
+    points_delta: int = 0       # total points awarded (base + bonus)
+    bonus_delta: int = 0        # bonus portion of points_delta (from beat-% tiers)
+    beat_pct: Optional[float] = None  # runtime beat percentile reported by LeetCode
     is_accepted: bool = False
     is_scoring: bool = False  # True only if it actually awarded points (first valid AC)
+    is_overflow: bool = False  # True for AC #4+ on a problem (not counted toward bonus)
+    is_tracked: bool = True    # False for submissions to non-contest problems
     note: Optional[str] = None  # e.g. "outside contest window", "duplicate"
-
-
-class PrecheckResult(BaseModel):
-    username: str
-    student_id: str
-    title_slug: str
-    detected: bool
-    checked_at: datetime = Field(default_factory=_utcnow)
-    confidence: str  # "full" if session cookie used, "partial" otherwise
-    note: Optional[str] = None
-
-
-class PollingStatus(BaseModel):
-    username: str
-    last_checked_at: Optional[datetime] = None
-    last_success_at: Optional[datetime] = None
-    last_error: Optional[str] = None
-    next_check_at: Optional[datetime] = None
-    consecutive_errors: int = 0
-
-
-class SystemEvent(BaseModel):
-    """Operator-visible system events (contest start/stop, API errors, etc.)."""
-
-    id: str = Field(default_factory=lambda: uuid4().hex)
-    at: datetime = Field(default_factory=_utcnow)
-    level: str = "info"  # info | warn | error
-    kind: str  # contest_started | contest_ended | api_error | reset | ...
-    message: str
-    detail: Optional[Dict[str, str]] = None
 
 
 class Contest(BaseModel):
@@ -135,9 +124,6 @@ class Contest(BaseModel):
     seen_submission_ids: Set[str] = Field(default_factory=set)
 
     events: List[SubmissionEvent] = Field(default_factory=list)
-    system_events: List[SystemEvent] = Field(default_factory=list)
-    precheck_results: List[PrecheckResult] = Field(default_factory=list)
-    polling_status: Dict[str, PollingStatus] = Field(default_factory=dict)
 
     last_started_at: Optional[datetime] = None
     last_ended_at: Optional[datetime] = None
@@ -147,12 +133,6 @@ class Contest(BaseModel):
 
 
 def default_contest() -> Contest:
-    """Default factory — used on cold-boot when no JSON file exists."""
+    """Cold-boot factory — empty contest in setup state."""
 
-    default_problems = [
-        Problem(title_slug="two-sum", difficulty=Difficulty.easy, points=1, order=0),
-        Problem(title_slug="valid-parentheses", difficulty=Difficulty.easy, points=1, order=1),
-        Problem(title_slug="3sum", difficulty=Difficulty.medium, points=3, order=2),
-        Problem(title_slug="trapping-rain-water", difficulty=Difficulty.hard, points=5, order=3),
-    ]
-    return Contest(problems=default_problems)
+    return Contest()

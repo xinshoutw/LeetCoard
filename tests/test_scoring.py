@@ -13,17 +13,17 @@ from pathlib import Path
 
 import pytest
 
-from app.config import Settings
-from app.models import (
+from app.core.config import Settings
+from app.core.sse import Broadcaster
+from app.core.storage import ContestStore
+from app.domain.models import (
     Contest,
     ContestStatus,
     Difficulty,
     Participant,
     Problem,
 )
-from app.sse import Broadcaster
-from app.state import ContestEngine
-from app.storage import ContestStore
+from app.domain.state import ContestEngine
 
 
 def _make_engine(tmp_path: Path) -> tuple[ContestEngine, ContestStore]:
@@ -127,7 +127,9 @@ async def test_late_arriving_in_window_submission_still_scores(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_untracked_problem_emits_no_event(tmp_path: Path):
+async def test_untracked_problem_does_not_score(tmp_path: Path):
+    """Submissions to untracked problems are emitted as informational events
+    (with is_tracked=False) so the admin can see them, but never award points."""
     engine, _ = _make_engine(tmp_path)
     start = datetime(2026, 1, 1, 10, tzinfo=timezone.utc)
     end = start + timedelta(hours=2)
@@ -137,7 +139,9 @@ async def test_untracked_problem_emits_no_event(tmp_path: Path):
         "alice",
         [_sub(30, "longest-palindrome", "Accepted", start + timedelta(minutes=5))],
     )
-    assert engine.contest.events == []
+    assert engine.contest.participants["alice"].score == 0
+    assert all(not e.is_scoring for e in engine.contest.events)
+    assert all(not e.is_tracked for e in engine.contest.events)
 
 
 @pytest.mark.asyncio

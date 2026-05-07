@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from sse_starlette.sse import EventSourceResponse
 
-from ..sse import broadcaster
+from ..core.sse import broadcaster
 
 router = APIRouter()
 

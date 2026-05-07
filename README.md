@@ -15,7 +15,7 @@ Public scoreboard ──SSE── ┐
 Admin dashboard   ──SSE── ┴── FastAPI backend ── httpx ── leetcode-api-pied
                               │
                               ├── polling worker（asyncio）
-                              ├── pre-check worker
+                              ├── contest scheduler（自動開始/結束）
                               ├── scoring engine（伺服器端唯一計分權威）
                               └── atomic JSON store（data/contest.json + .bak）
 ```
@@ -30,15 +30,16 @@ Admin dashboard   ──SSE── ┴── FastAPI backend ── httpx ── 
 ## 2. 主要狀態流
 
 ```
-setup ──(begin_precheck)──▶ precheck ──(start_contest)──▶ running ──(end_contest)──▶ ended
-   ▲                            │                                                       │
-   └──────── reset ─────────────┴───────────────────────────────────────────────────────┘
+setup ──(start_contest)──▶ running ──(end_contest)──▶ ended
+   ▲                                                     │
+   └────────────────── reset ────────────────────────────┘
 ```
 
 - `setup`：管理員可改題目、參賽者、時間
-- `precheck`：背景檢查每位參賽者是否曾經 AC 過比賽題目（hint，不自動扣分）
 - `running`：開始輪詢 + 計分 + 推播
 - `ended`：不再進新得分，前端切換到結束畫面，後端持續寬限期收尾
+
+排程器（`scheduler.py`）會主動觀察 `start_time` / `end_time`，到點自動 transition，不必管理員精準在秒上按按鈕。
 
 ---
 
@@ -52,13 +53,28 @@ setup ──(begin_precheck)──▶ precheck ──(start_contest)──▶ ru
   - `submission_event`
   - `contest_status` / `times_updated` / `problems_updated`
   - `polling_status`（admin only）
-  - `precheck_update`（admin only）
   - `system_event`（admin only）
+  - `contest_reset`
 - EventSource 自動重連；前端在重連後額外 `GET /api/snapshot` 重新對齊狀態，避免畫面跟後端飄離。
 
 ---
 
-## 4. JSON 持久化
+## 4. 計分規則
+
+每位參賽者對每題：
+
+1. **基礎分**：第一次在比賽時間內 AC，加上題目設定的 `points`（即時觸發）
+2. **Beat-% 加分**：可選功能，每題可設多階加分區間（`beat_bonus_tiers`），例如 `≥95% → +3`、`≥80% → +2`、`≥60% → +1`。
+   - 第一次 AC 時直接套用對應階級
+   - 之後同題再 AC，若 beat % 進步到更高階，**只補加差額**（不會重複加基礎分）
+3. **時間外 AC 不計分**：`submittedAt < start_time` 或 `> end_time` 的 submission 一律不算，但仍會記錄成事件
+4. **重複 dedupe**：同一個 `submission_id` 即使被多次輪詢拉到，也只計一次
+
+排名規則：分數高優先，分數相同時以「達到目前分數的時間」較早者勝出。分數 0 並列。
+
+---
+
+## 5. JSON 持久化
 
 - 檔案：`data/contest.json`，備份：`data/contest.json.bak`
 - 寫入：序列化 → 寫到 `.tmp` → `os.replace` → 失敗時直接 fallback 到 `.bak`
@@ -67,7 +83,7 @@ setup ──(begin_precheck)──▶ precheck ──(start_contest)──▶ ru
 
 ---
 
-## 5. 本機開發
+## 6. 本機開發
 
 ### 後端（Python ≥ 3.11）
 
@@ -79,7 +95,6 @@ pip install -e '.[dev]'
 cp .env.example .env
 # 編輯 .env：至少填 ADMIN_TOKEN
 
-# 預設 .env 範例已用 MOCK_MODE=true，啟動後不會打 LeetCode API
 uvicorn app.main:app --reload --port 8080
 ```
 
@@ -99,56 +114,21 @@ Vite dev server 會把 `/api/*` proxy 到 `http://localhost:8080`。打開
 ### 跑測試
 
 ```bash
-pytest -q              # 7 個 scoring / ranking / persistence 測試
+pytest -q              # 19 個 scoring / ranking / bonus / persistence 測試
 cd frontend && npm run lint   # tsc -b 型別檢查
 ```
 
 ---
 
-## 6. Mock mode 演練流程
-
-不打真 API，全程用本機 JSON 演算法跑出一場「假比賽」，可放投影機練動畫。
-
-1. `.env` 設 `MOCK_MODE=true`、`MOCK_SCRIPT_PATH=./mock/sample.json`
-2. 啟動後端 + 前端（如上）
-3. 開 `http://localhost:5173/dashboard`，貼 token 登入
-4. 在 dashboard：
-   - 設定開始 / 結束時間（例如：開始 = 現在 + 30 秒）
-   - 批量新增 `alice,B11000001` / `bob,B11000002` / `carol,B11000003` / `dan,B11000004`
-   - （題目有預設四題，不必改）
-   - 按「開始比賽」
-5. 開 `http://localhost:5173/` 看公開計分板
-6. 30 秒後 mock 開始按 `mock/sample.json` 裡的時間軸送 submission 進來，火柴人就會跳階梯
-
-要改劇本：直接編 `mock/sample.json`，重啟後端會重新讀。
-
-### 客製 mock 劇本
-
-```json
-{
-  "speed": 1.0,
-  "submissions": [
-    {"username": "alice", "title_slug": "two-sum", "status": "Accepted", "offset_sec": 5},
-    {"username": "bob",   "title_slug": "3sum",    "status": "Wrong Answer", "offset_sec": 10}
-  ]
-}
-```
-
-`speed` > 1 加速、< 1 慢動作。
-
----
-
 ## 7. 真實比賽開賽流程
 
-1. 把 `MOCK_MODE=false` 並填 `LEETCODE_SESSIONS=`（一個 LEETCODE_SESSION cookie 就夠用，多個會自動 round-robin + cooldown）。
+1. 把 `LEETCODE_SESSIONS` 填上（一個 LEETCODE_SESSION cookie 就夠用，多個會自動 round-robin + cooldown）。沒填也可以跑，只是不會抓到 beat-% bonus。
 2. 確認 `ADMIN_TOKEN` 已換成長隨機字串。
 3. dashboard：
-   - 設定題目（只能在比賽前改）
-   - 批量新增參賽者
+   - 設定題目（每題可選擇要不要設加分區間）
+   - 批量新增參賽者（每行 `username,student_id`）
    - 設定開始 / 結束時間
-   - 按「執行賽前檢查」→ 等 dashboard 出現結果（partial 結果會顯示橘色警示）
-   - 比賽開始前 30 秒按「開始比賽」
-   - 結束時間到了會自然封盤；要提早結束按「結束比賽」
+   - 比賽開始時間到了會自動轉 `running`，要提早結束按「結束比賽」
 4. 比賽中可隨時用「推播刷新」強制把所有 SSE 客戶端重新對齊。
 5. 異常時：`/api/admin/snapshot` 一定能拿到當前完整狀態；後端重啟也會從 JSON 恢復。
 
@@ -205,16 +185,14 @@ npm run build  # → dist/
 | `POST_END_GRACE_SEC` | `90` | 結束後仍輪詢的寬限期 |
 | `LEETCODE_HTTP_TIMEOUT_SEC` | `10` | httpx 超時 |
 | `CORS_ORIGINS` | `*` | 逗號分隔，正式環境填具體網域 |
-| `MOCK_MODE` | `false` | 切到 mock 模式 |
-| `MOCK_SCRIPT_PATH` | `./mock/sample.json` | mock 劇本 |
 
 ---
 
 ## 10. 系統測試清單（手動）
 
-- [ ] 比賽開始前 AC 不計分（mock 改 offset_sec=-30 驗證）
-- [ ] 比賽結束後送進來、但 submittedAt 在期間內 → 計分（mock 把 status 改 Accepted、offset_sec 設 contest 期間內、但 sleep 等到結束後再啟動）
-- [ ] 同題重複 AC 只算一次（mock 連續兩筆同 user 同 slug Accepted）
+- [ ] 比賽開始前 AC 不計分（手動把開始時間設未來，AC 後再開始）
+- [ ] 比賽結束後送進來、但 submittedAt 在期間內 → 計分（觀察 `POST_END_GRACE_SEC` 內的 polling）
+- [ ] 同題重複 AC 只算一次基礎分；beat-% 進步時加差額
 - [ ] 重啟後端後 `data/contest.json` 還在，狀態恢復一致
 - [ ] 殺掉 LeetCode API 連線（防火牆或假 base URL）→ dashboard polling 列出現紅 ⚠，前端不崩
 - [ ] dashboard token 錯誤 → 401 + 清掉 localStorage
@@ -224,8 +202,9 @@ npm run build  # → dist/
 
 ## 11. 已知假設
 
+- 一場比賽 2 小時 / 30–60 人 / 一次性活動
 - 一個 token 進 dashboard，沒有多管理員角色
 - 比賽過程中題目順序鎖定，沒做題序變更動畫
 - 同分排名以「達到該分數時間」決勝（伺服器端，前端只展示）
-- mock mode 不做 pre-check（沒有真實 LeetCode session）
 - 火柴人視覺以 DOM + Framer Motion 為主，30–60 人沒問題；超過約 80 人時，前端會自動橫向收緊間距
+- 沒有「賽前是否已 AC 過題目」的檢查（需要參賽者本人的 LEETCODE_SESSION，不可行）

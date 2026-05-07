@@ -9,17 +9,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .config import get_settings
-from .leetcode import LeetCodeClient
-from .mock import MockSubmissionWorker
-from .polling import PollingWorker
-from .precheck import PrecheckWorker
+from .core.config import get_settings
+from .core.sse import broadcaster
+from .core.storage import ContestStore
+from .domain.state import ContestEngine
+from .integrations.leetcode import LeetCodeClient
 from .routes import admin as admin_routes
 from .routes import public as public_routes
-from .scheduler import ContestScheduler
-from .sse import broadcaster
-from .state import ContestEngine
-from .storage import ContestStore
+from .workers.polling import PollingWorker
+from .workers.scheduler import ContestScheduler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,7 +29,7 @@ log = logging.getLogger("gdg.main")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-    log.info("Starting backend mock_mode=%s sessions=%d", settings.mock_mode, len(settings.session_list))
+    log.info("Starting backend sessions=%d", len(settings.session_list))
 
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     store = ContestStore(settings.state_file, settings.state_backup_file)
@@ -48,36 +46,27 @@ async def lifespan(app: FastAPI):
     await client.__aenter__()
     app.state.lc_client = client
 
-    polling: PollingWorker | None = None
-    precheck: PrecheckWorker | None = None
-    mock: MockSubmissionWorker | None = None
-
-    if settings.mock_mode:
-        mock = MockSubmissionWorker(engine, settings)
-        await mock.start()
-    else:
-        polling = PollingWorker(engine, client, settings)
-        precheck = PrecheckWorker(engine, client, settings)
-        await polling.start()
+    polling = PollingWorker(engine, client, settings)
+    await polling.start()
 
     scheduler = ContestScheduler(engine)
     await scheduler.start()
 
     app.state.polling_worker = polling
-    app.state.precheck_worker = precheck
-    app.state.mock_worker = mock
     app.state.scheduler = scheduler
+
+    # Best-effort one-shot backfill: legacy problems may lack frontend_id.
+    asyncio.create_task(engine.backfill_problem_metadata(client.get_problem))
 
     try:
         yield
     finally:
         log.info("Shutting down workers")
-        for worker in (scheduler, polling, precheck, mock):
-            if worker:
-                try:
-                    await worker.stop()
-                except Exception:
-                    log.exception("worker stop failed")
+        for worker in (scheduler, polling):
+            try:
+                await worker.stop()
+            except Exception:
+                log.exception("worker stop failed")
         await store.flush_now()
         await client.aclose()
 

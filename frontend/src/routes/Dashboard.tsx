@@ -5,9 +5,6 @@ import Login from "../components/dashboard/Login";
 import ContestPanel from "../components/dashboard/ContestPanel";
 import ProblemsPanel from "../components/dashboard/ProblemsPanel";
 import ParticipantsPanel from "../components/dashboard/ParticipantsPanel";
-import PrecheckPanel from "../components/dashboard/PrecheckPanel";
-import PollingPanel from "../components/dashboard/PollingPanel";
-import SystemPanel from "../components/dashboard/SystemPanel";
 import EventsPanel from "../components/dashboard/EventsPanel";
 import type { AdminSnapshot } from "../lib/types";
 
@@ -63,15 +60,14 @@ function DashboardInner({ token, onLogout }: { token: string; onLogout: () => vo
   }
 
   return (
-    <div className="w-screen min-h-screen stage-grid p-5">
-      <header className="flex items-center justify-between surface rounded-2xl px-6 py-3 mb-4">
+    <div className="w-screen h-screen flex flex-col stage-grid p-5 gap-4">
+      <header className="flex items-center justify-between surface rounded-2xl px-6 py-3 shrink-0">
         <div>
-          <div className="text-xs tracking-widest text-ink-300">GDG NTUST · ADMIN DASHBOARD</div>
           <h1 className="text-xl font-black">控制中心</h1>
         </div>
         <div className="flex items-center gap-4">
           <span className={"text-xs px-2 py-1 rounded font-mono " + (conn.connected ? "bg-g-green/20 text-g-green" : "bg-g-red/20 text-g-red")}>
-            {conn.connected ? "LIVE" : "OFFLINE"}
+            {conn.connected ? "CONNECTED" : "OFFLINE"}
           </span>
           <button
             onClick={onLogout}
@@ -80,29 +76,18 @@ function DashboardInner({ token, onLogout }: { token: string; onLogout: () => vo
         </div>
       </header>
 
-      <div className="grid grid-cols-12 gap-4">
-        <section className="col-span-12 lg:col-span-4">
+      <div className="flex-1 grid grid-cols-12 grid-rows-2 gap-4 min-h-0">
+        <section className="col-span-12 lg:col-span-4 lg:col-start-1 lg:row-start-1 lg:row-span-1 min-h-0">
           <ContestPanel snapshot={adminSnap} token={token} />
         </section>
-        <section className="col-span-12 lg:col-span-4">
+        <section className="col-span-12 lg:col-span-4 lg:col-start-1 lg:row-start-2 lg:row-span-1 min-h-0">
           <ProblemsPanel snapshot={adminSnap} token={token} />
         </section>
-        <section className="col-span-12 lg:col-span-4">
-          <ParticipantsPanel snapshot={adminSnap} token={token} />
-        </section>
-
-        <section className="col-span-12 lg:col-span-6">
-          <PrecheckPanel snapshot={adminSnap} token={token} />
-        </section>
-        <section className="col-span-12 lg:col-span-6">
-          <PollingPanel snapshot={adminSnap} />
-        </section>
-
-        <section className="col-span-12 lg:col-span-6">
+        <section className="col-span-12 lg:col-span-4 lg:col-start-5 lg:row-start-1 lg:row-span-2 min-h-0">
           <EventsPanel snapshot={adminSnap} />
         </section>
-        <section className="col-span-12 lg:col-span-6">
-          <SystemPanel snapshot={adminSnap} />
+        <section className="col-span-12 lg:col-span-4 lg:col-start-9 lg:row-start-1 lg:row-span-2 min-h-0">
+          <ParticipantsPanel snapshot={adminSnap} token={token} />
         </section>
       </div>
     </div>
