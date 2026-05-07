@@ -2,7 +2,7 @@
 
 ![Banner](.github/assets/banner.png)
 
-**LeetCode + Scoreboard** — 即時計分轉播系統
+**LeetCode x Scoreboard** — 即時計分轉播系統
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org)  
@@ -16,7 +16,7 @@
 
 ## 總覽
 
-LeetCoard 是即時排行榜與投影轉播系統，給社課 / 比賽當天用。後端 FastAPI 持續輪詢 LeetCode submissions，前端 React + Framer Motion 把分數變化做成「小朋友上樓梯」動畫，全程 SSE 推播。
+LeetCoard 是即時排行榜與投影轉播系統，給社課 / 比賽當天用。後端 FastAPI 持續輪詢 LeetCode submissions，全程 SSE 推播。
 
 底層由 asyncio polling worker、scheduler、scoring engine 與原子化 JSON store 組成；伺服器端為唯一計分權威，前端不計分，僅消費 `/api/snapshot` 與 SSE 事件。
 
