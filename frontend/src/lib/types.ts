@@ -48,7 +48,9 @@ export interface SubmissionEventPayload {
   short_label: string;
   submitted_at: string;
   detected_at: string;
-  points_delta: number;
+  points_delta: number;       // total awarded (base + bonus)
+  bonus_delta: number;        // bonus portion (from beat-% tiers)
+  beat_pct?: number | null;   // runtime beat percentile reported by LeetCode
   is_accepted: boolean;
   is_scoring: boolean;
   note?: string | null;

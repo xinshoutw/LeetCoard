@@ -61,6 +61,8 @@ class Participant(BaseModel):
     rank: int = 0
     solved_problems: Set[str] = Field(default_factory=set)
     problem_first_ac_at: Dict[str, datetime] = Field(default_factory=dict)
+    problem_bonus_pts: Dict[str, int] = Field(default_factory=dict)  # current bonus per problem (upgradable)
+    problem_best_beat_pct: Dict[str, float] = Field(default_factory=dict)  # best beat% seen so far
     reached_current_score_at: Optional[datetime] = None
     added_at: datetime = Field(default_factory=_utcnow)
 

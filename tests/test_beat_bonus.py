@@ -146,8 +146,8 @@ async def test_below_threshold_gives_no_bonus(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_non_scoring_ac_gets_no_bonus(tmp_path: Path):
-    """Second AC on same problem must not trigger bonus."""
+async def test_re_ac_with_same_beat_pct_no_upgrade(tmp_path: Path):
+    """Second AC with same/worse beat % does not trigger an upgrade."""
     engine = _make_engine(tmp_path)
     start = datetime(2026, 1, 1, 10, tzinfo=timezone.utc)
     _seed(engine, start, start + timedelta(hours=2))
@@ -166,6 +166,47 @@ async def test_non_scoring_ac_gets_no_bonus(tmp_path: Path):
     second_evt = next(e for e in engine.contest.events if e.submission_id == "5")
     assert not second_evt.is_scoring
     assert second_evt.bonus_delta == 0
+    assert second_evt.beat_pct == 99.0  # still recorded for display
+
+
+@pytest.mark.asyncio
+async def test_re_ac_with_better_beat_pct_upgrades_bonus(tmp_path: Path):
+    """Re-AC with higher beat % adds the bonus delta to the score."""
+    engine = _make_engine(tmp_path)
+    start = datetime(2026, 1, 1, 10, tzinfo=timezone.utc)
+    _seed(engine, start, start + timedelta(hours=2))
+
+    # First AC at beat 65 → bonus 1
+    await engine.ingest_submissions(
+        "alice",
+        [_sub(10, "two-sum", "Accepted", start + timedelta(minutes=2), beat_pct=65.0)],
+    )
+    assert engine.contest.participants["alice"].score == 1 + 1
+
+    # Re-AC at beat 85 → bonus tier 2 → upgrade by +1
+    await engine.ingest_submissions(
+        "alice",
+        [_sub(11, "two-sum", "Accepted", start + timedelta(minutes=5), beat_pct=85.0)],
+    )
+    alice = engine.contest.participants["alice"]
+    assert alice.score == 1 + 2  # base + new bonus
+    assert alice.problem_bonus_pts["two-sum"] == 2
+
+    upgrade_evt = next(e for e in engine.contest.events if e.submission_id == "11")
+    assert upgrade_evt.is_scoring
+    assert upgrade_evt.bonus_delta == 1  # delta only
+    assert upgrade_evt.points_delta == 1
+    assert upgrade_evt.beat_pct == 85.0
+    assert "→" in (upgrade_evt.note or "")
+
+    # Re-AC at beat 99 → bonus tier 3 → another +1 upgrade
+    await engine.ingest_submissions(
+        "alice",
+        [_sub(12, "two-sum", "Accepted", start + timedelta(minutes=8), beat_pct=99.0)],
+    )
+    alice = engine.contest.participants["alice"]
+    assert alice.score == 1 + 3
+    assert alice.problem_bonus_pts["two-sum"] == 3
 
 
 @pytest.mark.asyncio

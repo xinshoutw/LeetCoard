@@ -21,8 +21,9 @@ export default function EventsPanel({ snapshot }: { snapshot: AdminSnapshot }) {
       <div className="max-h-72 overflow-y-auto text-[12px] font-mono">
         {events.map((e) => {
           const colour = STATUS_COLOR[e.short_label] ?? "#9aa3c7";
+          const beat = e.beat_pct != null ? `${Math.round(e.beat_pct)}%` : null;
           return (
-            <div key={e.id} className="grid grid-cols-[80px_56px_1fr_60px] gap-2 py-1 border-b border-white/5">
+            <div key={e.id} className="grid grid-cols-[72px_44px_1fr_44px_56px] gap-2 py-1 border-b border-white/5 items-center">
               <span className="text-ink-300 text-[10px] tabular">
                 {new Date(e.submitted_at).toLocaleTimeString([], { hour12: false })}
               </span>
@@ -41,8 +42,18 @@ export default function EventsPanel({ snapshot }: { snapshot: AdminSnapshot }) {
                 <span className="text-ink-300"> · {e.title_slug}</span>
                 {e.note && <span className="text-ink-300"> · {e.note}</span>}
               </span>
+              <span className="text-right text-[10px] tabular text-g-blue">
+                {beat ? `★${beat}` : ""}
+              </span>
               <span className="text-right text-g-green tabular">
-                {e.is_scoring ? `+${e.points_delta}` : ""}
+                {e.is_scoring ? (
+                  <>
+                    +{e.points_delta}
+                    {e.bonus_delta > 0 && (
+                      <span className="text-[9px] text-g-blue/80"> (+{e.bonus_delta})</span>
+                    )}
+                  </>
+                ) : ""}
               </span>
             </div>
           );

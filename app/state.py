@@ -396,8 +396,10 @@ class ContestEngine:
                 status=ContestStatus.setup,
                 problems=problems,
                 participants=participants,
-                start_time=self.contest.start_time if keep_config else None,
-                end_time=self.contest.end_time if keep_config else None,
+                start_time = None,
+                end_time = None,
+                # start_time=self.contest.start_time, if keep_config else None,
+                # end_time=self.contest.end_time if keep_config else None,
                 last_reset_at=_utcnow(),
             )
             self._system_event("reset", f"keep_config={keep_config}")
@@ -512,20 +514,42 @@ class ContestEngine:
                 )
 
                 if is_accepted:
+                    # Always read beat % so the event feed can display it,
+                    # even when the submission doesn't end up scoring.
+                    beat_pct = _extract_beat_pct(sub)
+                    new_bonus = compute_beat_bonus(beat_pct, problem.beat_bonus_tiers)
+
                     if not in_window:
                         note = "outside contest window"
-                    elif slug in participant.solved_problems:
-                        note = "already scored"
-                    else:
+                    elif slug not in participant.solved_problems:
+                        # First AC — base points + initial bonus.
                         is_scoring = True
-                        points_delta = problem.points
-                        beat_pct = _extract_beat_pct(sub)
-                        bonus_delta = compute_beat_bonus(beat_pct, problem.beat_bonus_tiers)
-                        points_delta += bonus_delta
+                        bonus_delta = new_bonus
+                        points_delta = problem.points + bonus_delta
                         participant.solved_problems.add(slug)
                         participant.problem_first_ac_at[slug] = submitted_at
+                        participant.problem_bonus_pts[slug] = new_bonus
+                        if beat_pct is not None:
+                            participant.problem_best_beat_pct[slug] = beat_pct
                         participant.score += points_delta
                         participant.reached_current_score_at = submitted_at
+                    else:
+                        # Already solved — re-AC may upgrade the bonus if beat % improved.
+                        old_bonus = participant.problem_bonus_pts.get(slug, 0)
+                        if new_bonus > old_bonus:
+                            is_scoring = True
+                            bonus_delta = new_bonus - old_bonus
+                            points_delta = bonus_delta
+                            participant.problem_bonus_pts[slug] = new_bonus
+                            if beat_pct is not None:
+                                participant.problem_best_beat_pct[slug] = max(
+                                    participant.problem_best_beat_pct.get(slug, 0.0), beat_pct,
+                                )
+                            participant.score += bonus_delta
+                            participant.reached_current_score_at = submitted_at
+                            note = f"bonus +{old_bonus}→+{new_bonus}"
+                        else:
+                            note = f"already scored (+{old_bonus} bonus)"
 
                 evt = SubmissionEvent(
                     submission_id=sub_id,

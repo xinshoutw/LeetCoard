@@ -103,8 +103,16 @@ function Item({ e, difficulty }: { e: SubmissionEventPayload; difficulty?: Probl
           {e.title || e.title_slug}
         </div>
       </div>
+      {e.beat_pct != null && (
+        <span className="text-g-blue text-[10px] font-mono tabular">★{Math.round(e.beat_pct)}%</span>
+      )}
       {e.is_scoring && (
-        <span className="text-g-green text-[12px] font-black tabular">+{e.points_delta}</span>
+        <span className="text-g-green text-[12px] font-black tabular">
+          +{e.points_delta}
+          {e.bonus_delta > 0 && (
+            <span className="text-[9px] text-g-blue/80 ml-0.5">(+{e.bonus_delta})</span>
+          )}
+        </span>
       )}
     </div>
   );
