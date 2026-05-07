@@ -2,7 +2,7 @@ import { useContestStream } from "../hooks/useContestStream";
 import Header from "../components/scoreboard/Header";
 import Leaderboard from "../components/scoreboard/Leaderboard";
 import EventFeed from "../components/scoreboard/EventFeed";
-import Stickman from "../components/scoreboard/Stickman";
+import ProgressTrack from "../components/scoreboard/ProgressTrack";
 
 export default function Scoreboard() {
   const { snapshot, conn } = useContestStream({ audience: "public" });
@@ -28,7 +28,7 @@ export default function Scoreboard() {
       />
       <div className="flex-1 grid grid-cols-[360px_1fr_360px] gap-5 min-h-0">
         <Leaderboard rows={snapshot.leaderboard} problems={snapshot.problems} />
-        <Stickman rows={snapshot.leaderboard} status={snapshot.status} />
+        <ProgressTrack rows={snapshot.leaderboard} status={snapshot.status} />
         <EventFeed events={snapshot.events} problems={snapshot.problems} />
       </div>
     </div>

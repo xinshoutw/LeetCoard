@@ -11,7 +11,6 @@ interface Props {
 
 const STATUS_LABEL: Record<ContestStatus, { text: string; color: string }> = {
   setup: { text: "尚未開始 · SETUP", color: "#9aa3c7" },
-  precheck: { text: "賽前檢查 · PRE-CHECK", color: "#4285F4" },
   running: { text: "比賽進行中 · RUNNING", color: "#34A853" },
   ended: { text: "比賽結束 · ENDED", color: "#FBBC04" },
 };
@@ -29,7 +28,7 @@ export default function Header({ status, startTime, endTime, connected }: Props)
 
   let countdown: string | null = null;
   let countdownLabel: string | null = null;
-  if (status === "setup" || status === "precheck") {
+  if (status === "setup") {
     if (start && start > now) {
       countdown = fmtDuration(start - now);
       countdownLabel = "距開始";
@@ -45,14 +44,8 @@ export default function Header({ status, startTime, endTime, connected }: Props)
   return (
     <div className="flex items-center justify-between px-8 py-4 surface rounded-3xl">
       <div className="flex items-center gap-4">
-        <div className="size-10 rounded-2xl bg-stage-700 flex items-center justify-center shadow-glow">
-          <Logo />
-        </div>
         <div>
-          <div className="text-[11px] tracking-[0.3em] text-ink-300 font-mono">
-            GDG ON CAMPUS · NTUST
-          </div>
-          <div className="text-2xl font-black tracking-wide">LeetCode 競賽計分板</div>
+          <div className="text-2xl font-black tracking-wide">LeetCode 大賽計分版</div>
         </div>
       </div>
 
@@ -91,13 +84,3 @@ function StatusPill({ text, color }: { text: string; color: string }) {
   );
 }
 
-function Logo() {
-  return (
-    <svg viewBox="0 0 32 32" width={26} height={26}>
-      <circle cx="10" cy="11" r="4" fill="#4285F4" />
-      <circle cx="22" cy="11" r="4" fill="#EA4335" />
-      <circle cx="10" cy="22" r="4" fill="#FBBC04" />
-      <circle cx="22" cy="22" r="4" fill="#34A853" />
-    </svg>
-  );
-}
