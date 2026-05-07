@@ -82,6 +82,18 @@ export default function ProblemsPanel({ snapshot, token }: Props) {
   const [draft, setDraft] = useState<Draft[]>(() => snapshot.problems.map(toDraft));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  const moveRow = (from: number, to: number) => {
+    if (from === to) return;
+    setDraft((d) => {
+      const copy = [...d];
+      const [moved] = copy.splice(from, 1);
+      copy.splice(to, 0, moved);
+      return copy;
+    });
+  };
 
   useEffect(() => {
     setDraft(snapshot.problems.map(toDraft));
@@ -200,9 +212,48 @@ export default function ProblemsPanel({ snapshot, token }: Props) {
       <div className="flex-1 min-h-0 space-y-2 overflow-y-auto pr-1">
         {draft.map((p, i) => {
           const tierCount = p.beat_bonus_tiers.length;
+          const isDropTarget = dragOverIdx === i && dragIdx !== null && dragIdx !== i;
           return (
-            <div key={p._key}>
-              <div className="grid grid-cols-[1fr_72px_64px_auto_24px] gap-2 items-center">
+            <div
+              key={p._key}
+              onDragOver={(e) => {
+                if (dragIdx === null || locked) return;
+                e.preventDefault();
+                if (dragOverIdx !== i) setDragOverIdx(i);
+              }}
+              onDragLeave={() => {
+                if (dragOverIdx === i) setDragOverIdx(null);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragIdx !== null) moveRow(dragIdx, i);
+                setDragIdx(null);
+                setDragOverIdx(null);
+              }}
+              className={isDropTarget ? "rounded outline outline-2 outline-g-blue/60 outline-offset-2" : ""}
+            >
+              <div className="grid grid-cols-[16px_1fr_72px_64px_auto_24px] gap-2 items-center">
+                <span
+                  draggable={!locked}
+                  onDragStart={(e) => {
+                    setDragIdx(i);
+                    e.dataTransfer.effectAllowed = "move";
+                    // Keep dataTransfer non-empty so Firefox actually starts the drag.
+                    e.dataTransfer.setData("text/plain", String(i));
+                  }}
+                  onDragEnd={() => {
+                    setDragIdx(null);
+                    setDragOverIdx(null);
+                  }}
+                  title={locked ? "比賽已開始，無法調整順序" : "拖曳以調整題目順序"}
+                  className={
+                    "text-ink-300 text-center select-none " +
+                    (locked ? "opacity-30" : "cursor-grab active:cursor-grabbing hover:text-ink-100")
+                  }
+                  aria-label="drag handle"
+                >
+                  ≡
+                </span>
                 <SlugSearch
                   value={p.title_slug}
                   title={p.title ?? null}
