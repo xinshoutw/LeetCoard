@@ -16,9 +16,10 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from ..auth import admin_token_for_sse, require_admin
-from ..models import ContestStatus, Difficulty, Problem
+from ..models import BonusTier, ContestStatus, Difficulty, Problem
 from ..state import StartLockError
 from ..sse import broadcaster
+
 
 router = APIRouter()
 
@@ -30,6 +31,11 @@ class TimesIn(BaseModel):
     end_time: Optional[datetime] = None
 
 
+class BonusTierIn(BaseModel):
+    min_beat_pct: float = Field(ge=0.0, le=100.0)
+    bonus_pts: int = Field(ge=0)
+
+
 class ProblemIn(BaseModel):
     title_slug: str
     difficulty: Difficulty
@@ -37,6 +43,7 @@ class ProblemIn(BaseModel):
     order: int = Field(ge=0)
     title: Optional[str] = None
     color: Optional[str] = None
+    beat_bonus_tiers: List[BonusTierIn] = Field(default_factory=list)
 
 
 class ProblemsIn(BaseModel):

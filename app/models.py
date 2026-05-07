@@ -31,6 +31,17 @@ class Difficulty(str, Enum):
     hard = "hard"
 
 
+class BonusTier(BaseModel):
+    """One bracket in the runtime-beat-% bonus table.
+
+    Example: BonusTier(min_beat_pct=95.0, bonus_pts=3) awards +3 points
+    when the submission beats ≥ 95 % of LeetCode runtime submissions.
+    """
+
+    min_beat_pct: float = Field(ge=0.0, le=100.0)
+    bonus_pts: int = Field(ge=0)
+
+
 class Problem(BaseModel):
     title_slug: str
     difficulty: Difficulty
@@ -38,6 +49,7 @@ class Problem(BaseModel):
     order: int = Field(ge=0)
     title: Optional[str] = None  # cached display name from /problem/{slug}
     color: Optional[str] = None  # css colour for status pip; defaults from difficulty
+    beat_bonus_tiers: List[BonusTier] = Field(default_factory=list)
 
 
 class Participant(BaseModel):
@@ -86,7 +98,9 @@ class SubmissionEvent(BaseModel):
     short_label: str  # AC, WA, TLE, RE, CE, MLE, OLE, ...
     submitted_at: datetime
     detected_at: datetime = Field(default_factory=_utcnow)
-    points_delta: int = 0
+    points_delta: int = 0       # total points awarded (base + bonus)
+    bonus_delta: int = 0        # bonus portion of points_delta (from beat-% tiers)
+    beat_pct: Optional[float] = None  # runtime beat percentile reported by LeetCode
     is_accepted: bool = False
     is_scoring: bool = False  # True only if it actually awarded points (first valid AC)
     note: Optional[str] = None  # e.g. "outside contest window", "duplicate"

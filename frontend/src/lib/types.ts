@@ -2,6 +2,11 @@
 
 export type ContestStatus = "setup" | "precheck" | "running" | "ended";
 
+export interface BonusTier {
+  min_beat_pct: number;  // 0–100, inclusive lower bound
+  bonus_pts: number;
+}
+
 export interface ProblemPayload {
   title_slug: string;
   difficulty: "easy" | "medium" | "hard";
@@ -9,6 +14,7 @@ export interface ProblemPayload {
   order: number;
   title?: string | null;
   color?: string | null;
+  beat_bonus_tiers?: BonusTier[];
 }
 
 export interface LeaderboardRow {

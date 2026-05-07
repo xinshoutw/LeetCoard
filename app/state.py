@@ -32,6 +32,7 @@ from .models import (
     SubmissionStatus,
     SystemEvent,
 )
+from .scoring import compute_beat_bonus
 from .sse import Broadcaster
 from .storage import ContestStore
 
@@ -56,6 +57,20 @@ def _utcnow() -> datetime:
 
 def _short_label(status: str) -> str:
     return _SHORT_LABELS.get(status, status[:3].upper() if status else "??")
+
+
+def _extract_beat_pct(sub: dict) -> Optional[float]:
+    """Try known field names for the runtime beat percentile (0–100)."""
+    for key in ("runtimePercentile", "runtime_percentile", "beatPercentile", "beat_percentile"):
+        v = sub.get(key)
+        if v is not None:
+            try:
+                f = float(v)
+                if 0.0 <= f <= 100.0:
+                    return f
+            except (TypeError, ValueError):
+                pass
+    return None
 
 
 def _hash_color(username: str) -> str:
@@ -485,7 +500,11 @@ class ContestEngine:
                 is_accepted = status_disp == SubmissionStatus.accepted.value
                 is_scoring = False
                 points_delta = 0
+                bonus_delta = 0
+                beat_pct: Optional[float] = None
                 note: Optional[str] = None
+                if is_accepted:
+                    log.debug("AC submission fields for %s/%s: %s", username, slug, list(sub.keys()))
 
                 # Time-window gating — even AC outside window does not score.
                 in_window = (
@@ -502,6 +521,9 @@ class ContestEngine:
                     else:
                         is_scoring = True
                         points_delta = problem.points
+                        beat_pct = _extract_beat_pct(sub)
+                        bonus_delta = compute_beat_bonus(beat_pct, problem.beat_bonus_tiers)
+                        points_delta += bonus_delta
                         participant.solved_problems.add(slug)
                         participant.problem_first_ac_at[slug] = submitted_at
                         participant.score += points_delta
@@ -517,6 +539,8 @@ class ContestEngine:
                     short_label=_short_label(status_disp),
                     submitted_at=submitted_at,
                     points_delta=points_delta,
+                    bonus_delta=bonus_delta,
+                    beat_pct=beat_pct,
                     is_accepted=is_accepted,
                     is_scoring=is_scoring,
                     note=note,
