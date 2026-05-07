@@ -56,7 +56,7 @@ LeetCoard 是即時排行榜與投影轉播系統，給社課 / 比賽當天用�
 ## 安裝
 
 ```bash
-git clone https://github.com/xinshoutw/gdg-leetcode.git leetcoard
+git clone https://github.com/xinshoutw/leetcoard.git leetcoard
 cd leetcoard
 
 # 後端
