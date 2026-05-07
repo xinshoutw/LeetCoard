@@ -3,6 +3,7 @@ import { API_BASE, streamUrl } from "../lib/api";
 import type {
   AdminSnapshot,
   LeaderboardRow,
+  ParticipantAdminPayload,
   PublicSnapshot,
   SubmissionEventPayload,
 } from "../lib/types";
@@ -23,6 +24,7 @@ type Action =
   | { type: "contest_status"; status: PublicSnapshot["status"]; start: string | null; end: string | null }
   | { type: "times"; start: string | null; end: string | null }
   | { type: "problems"; problems: PublicSnapshot["problems"] }
+  | { type: "participants_admin"; participants: Record<string, ParticipantAdminPayload> }
   | { type: "reset"; snapshot: Snapshot }
   | { type: "conn"; conn: Partial<ConnState> };
 
@@ -67,6 +69,13 @@ function reducer(state: State, action: Action): State {
     case "problems": {
       if (!state.snapshot) return state;
       return { ...state, snapshot: { ...state.snapshot, problems: action.problems } };
+    }
+    case "participants_admin": {
+      if (!state.snapshot) return state;
+      return {
+        ...state,
+        snapshot: { ...state.snapshot, participants_admin: action.participants } as Snapshot,
+      };
     }
     case "reset":
       return { ...state, snapshot: action.snapshot };
@@ -141,6 +150,12 @@ export function useContestStream(opts: UseStreamOpts) {
       es.addEventListener("problems_updated", (e) => {
         const d = JSON.parse((e as MessageEvent).data);
         dispatch({ type: "problems", problems: d.problems });
+      });
+      es.addEventListener("participants_updated", (e) => {
+        const d = JSON.parse((e as MessageEvent).data);
+        if (d.participants_admin) {
+          dispatch({ type: "participants_admin", participants: d.participants_admin });
+        }
       });
       es.addEventListener("contest_reset", (e) => {
         const d = JSON.parse((e as MessageEvent).data);

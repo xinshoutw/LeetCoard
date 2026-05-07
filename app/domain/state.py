@@ -118,6 +118,19 @@ class ContestEngine:
     def _push_leaderboard(self) -> None:
         self._bc.broadcast("leaderboard_update", {"leaderboard": self._leaderboard_snapshot()})
 
+    def _broadcast_participants_admin(self) -> None:
+        self._store.mark_dirty()
+        self._bc.broadcast(
+            "participants_updated",
+            {
+                "count": len(self.contest.participants),
+                "participants_admin": {
+                    k: v.model_dump(mode="json") for k, v in self.contest.participants.items()
+                },
+            },
+            audience="admin",
+        )
+
     def _leaderboard_snapshot(self) -> List[dict]:
         ranked = self._compute_ranks()
         diff_by_slug = {prob.title_slug: prob.difficulty for prob in self.contest.problems}
@@ -235,11 +248,7 @@ class ContestEngine:
                     )
                     created += 1
                     new_usernames.append(u)
-            self._flag_dirty_and_broadcast(
-                "participants_updated",
-                {"count": len(self.contest.participants)},
-                audience="admin",
-            )
+            self._broadcast_participants_admin()
             self._push_leaderboard()
         return created, updated, errors, new_usernames
 
@@ -247,11 +256,7 @@ class ContestEngine:
         async with self._lock:
             existed = self.contest.participants.pop(username, None) is not None
             if existed:
-                self._flag_dirty_and_broadcast(
-                    "participants_updated",
-                    {"count": len(self.contest.participants)},
-                    audience="admin",
-                )
+                self._broadcast_participants_admin()
                 self._push_leaderboard()
             return existed
 
@@ -267,7 +272,7 @@ class ContestEngine:
             p.lc_medium_total = medium_total
             p.lc_hard_total = hard_total
             p.profile_fetched_at = _utcnow()
-            self._store.mark_dirty()
+            self._broadcast_participants_admin()
         self._push_leaderboard()
 
     async def set_times(self, start: Optional[datetime], end: Optional[datetime]) -> None:
