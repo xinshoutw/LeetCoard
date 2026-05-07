@@ -2,12 +2,11 @@
 
 ![Banner](.github/assets/banner.png)
 
-# LeetCoard
-
-**LeetCode + Scoreboard** — GDG on Campus NTUST 即時計分轉播系統
+**LeetCode + Scoreboard** — 即時計分轉播系統
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org)  
+
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://react.dev)
 [![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
@@ -20,10 +19,6 @@
 LeetCoard 是即時排行榜與投影轉播系統，給社課 / 比賽當天用。後端 FastAPI 持續輪詢 LeetCode submissions，前端 React + Framer Motion 把分數變化做成「小朋友上樓梯」動畫，全程 SSE 推播。
 
 底層由 asyncio polling worker、scheduler、scoring engine 與原子化 JSON store 組成；伺服器端為唯一計分權威，前端不計分，僅消費 `/api/snapshot` 與 SSE 事件。
-
-- 公開計分板：[`https://leetcode.gdg-ntust.org/`](https://leetcode.gdg-ntust.org/)（投影機畫面，1920×1080）
-- 管理員 dashboard：[`https://leetcode.gdg-ntust.org/dashboard`](https://leetcode.gdg-ntust.org/dashboard)
-- 後端 API：`https://api-leetcode.gdg-ntust.org/api/...`
 
 ### 介面預覽
 
@@ -56,7 +51,7 @@ LeetCoard 是即時排行榜與投影轉播系統，給社課 / 比賽當天用�
 ## 安裝
 
 ```bash
-git clone https://github.com/xinshoutw/leetcoard.git leetcoard
+git clone https://github.com/xinshoutw/leetcoard.git
 cd leetcoard
 
 # 後端
