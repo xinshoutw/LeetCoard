@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, ApiError } from "../../lib/api";
+import { getProblemDetail, searchProblems } from "../../lib/leetcode";
 import type { AdminSnapshot, BonusTier, ProblemPayload } from "../../lib/types";
 import { difficultyColor } from "../../lib/color";
 
@@ -152,16 +153,16 @@ export default function ProblemsPanel({ snapshot, token }: Props) {
       ),
     );
 
-  const onPick = async (i: number, slug: string, title: string) => {
-    update(i, { title_slug: slug, title });
+  const onPick = async (i: number, slug: string, title: string, frontendId: string | null) => {
+    update(i, { title_slug: slug, title, frontend_id: frontendId });
     try {
-      const detail = await api<{ title: string; difficulty: Difficulty; frontend_id?: string | null }>(
-        `/api/admin/leetcode/problem/${encodeURIComponent(slug)}`,
-        { token },
-      );
+      const detail = await getProblemDetail(slug);
+      if (!detail) return;
       applyDifficulty(i, detail.difficulty);
-      // Apply canonical title + LeetCode official number from upstream.
-      update(i, { title: detail.title, frontend_id: detail.frontend_id ?? null });
+      update(i, {
+        title: detail.title,
+        frontend_id: detail.frontend_id ?? frontendId ?? null,
+      });
     } catch {
       // Silent fallback: keep whatever defaults the row already has.
     }
@@ -259,9 +260,8 @@ export default function ProblemsPanel({ snapshot, token }: Props) {
                   value={p.title_slug}
                   title={p.title ?? null}
                   disabled={locked}
-                  token={token}
                   onChange={(v) => update(i, { title_slug: v })}
-                  onPick={(slug, title) => onPick(i, slug, title)}
+                  onPick={(slug, title, fid) => onPick(i, slug, title, fid)}
                 />
                 <span
                   className="px-2 py-1 rounded bg-stage-900/50 border border-white/10 text-[11px] uppercase font-bold tracking-wide text-center"
@@ -380,22 +380,22 @@ export default function ProblemsPanel({ snapshot, token }: Props) {
 interface SearchHit {
   title: string;
   title_slug: string;
+  frontend_id: string | null;
 }
 
 interface SlugSearchProps {
   value: string;
   title: string | null;
   disabled: boolean;
-  token: string;
   onChange: (v: string) => void;
-  onPick: (slug: string, title: string) => void;
+  onPick: (slug: string, title: string, frontendId: string | null) => void;
 }
 
 function normaliseQuery(raw: string): string {
   return raw.trim().replace(/\s+/g, "-");
 }
 
-function SlugSearch({ value, disabled, token, onChange, onPick }: SlugSearchProps) {
+function SlugSearch({ value, disabled, onChange, onPick }: SlugSearchProps) {
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -449,11 +449,7 @@ function SlugSearch({ value, disabled, token, onChange, onPick }: SlugSearchProp
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(async () => {
       try {
-        const data = await api<{ results: SearchHit[] }>(
-          `/api/admin/leetcode/search?q=${encodeURIComponent(q)}`,
-          { token },
-        );
-        setHits(data.results);
+        setHits(await searchProblems(q));
       } catch {
         setHits([]);
       } finally {
@@ -486,7 +482,7 @@ function SlugSearch({ value, disabled, token, onChange, onPick }: SlugSearchProp
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
-                  onPick(h.title_slug, h.title);
+                  onPick(h.title_slug, h.title, h.frontend_id);
                   setOpen(false);
                 }}
                 className="block w-full text-left px-3 py-1.5 hover:bg-stage-700"

@@ -11,7 +11,7 @@ import json
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
@@ -67,23 +67,7 @@ async def auth_check(_: None = Depends(require_admin)) -> dict:
     return {"ok": True}
 
 
-# ---- LeetCode problem search (proxy) ---------------------------------------
-
-@router.get("/leetcode/search")
-async def leetcode_search(
-    request: Request,
-    q: str = Query(default="", min_length=0, max_length=80),
-    _: None = Depends(require_admin),
-) -> dict:
-    """Proxy to leetcode-api-pied /search so the dashboard can autocomplete
-    title slugs without dealing with CORS."""
-    query = (q or "").strip()
-    if len(query) < 2:
-        return {"results": []}
-    client = request.app.state.lc_client
-    results = await client.search_problems(query)
-    return {"results": results}
-
+# ---- Problems metadata refresh ---------------------------------------------
 
 @router.post("/problems/refresh-metadata")
 async def refresh_problem_metadata(
@@ -96,36 +80,6 @@ async def refresh_problem_metadata(
     client = request.app.state.lc_client
     await engine.backfill_problem_metadata(client.get_problem)
     return {"ok": True, "count": len(engine.contest.problems)}
-
-
-@router.get("/leetcode/problem/{slug}")
-async def leetcode_problem(
-    slug: str,
-    request: Request,
-    _: None = Depends(require_admin),
-) -> dict:
-    """Lightweight proxy returning just the bits the dashboard needs to
-    auto-fill a problem row (difficulty + canonical title)."""
-    client = request.app.state.lc_client
-    try:
-        data = await client.get_problem(slug)
-    except Exception:
-        raise HTTPException(status_code=404, detail="problem not found")
-    raw_diff = (data.get("difficulty") or "").strip().lower()
-    if raw_diff not in ("easy", "medium", "hard"):
-        raise HTTPException(status_code=502, detail=f"unexpected difficulty: {raw_diff!r}")
-    raw_fid = (
-        data.get("questionFrontendId")
-        or data.get("frontend_id")
-        or data.get("questionId")
-        or data.get("id")
-    )
-    return {
-        "title_slug": slug,
-        "title": data.get("title") or slug,
-        "difficulty": raw_diff,
-        "frontend_id": str(raw_fid) if raw_fid is not None else None,
-    }
 
 
 # ---- Snapshot + stream ------------------------------------------------------
