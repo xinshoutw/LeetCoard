@@ -53,6 +53,8 @@ export interface SubmissionEventPayload {
   beat_pct?: number | null;   // runtime beat percentile reported by LeetCode
   is_accepted: boolean;
   is_scoring: boolean;
+  is_overflow: boolean;
+  is_tracked: boolean;
   note?: string | null;
 }
 

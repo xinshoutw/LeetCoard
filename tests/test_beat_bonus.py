@@ -210,6 +210,75 @@ async def test_re_ac_with_better_beat_pct_upgrades_bonus(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_fourth_ac_does_not_upgrade_bonus(tmp_path: Path):
+    """Only the first 3 in-window ACs per problem can move the bonus.
+    A 4th AC with a higher beat % is recorded as overflow, no score change."""
+    engine = _make_engine(tmp_path)
+    start = datetime(2026, 1, 1, 10, tzinfo=timezone.utc)
+    _seed(engine, start, start + timedelta(hours=2))
+
+    # AC #1 at beat 65 → tier 1, score = 1 + 1 = 2
+    await engine.ingest_submissions(
+        "alice",
+        [_sub(100, "two-sum", "Accepted", start + timedelta(minutes=1), beat_pct=65.0)],
+    )
+    # AC #2 at beat 85 → upgrade to tier 2, score = 1 + 2 = 3
+    await engine.ingest_submissions(
+        "alice",
+        [_sub(101, "two-sum", "Accepted", start + timedelta(minutes=2), beat_pct=85.0)],
+    )
+    # AC #3 at beat 70 → still tier 2, no upgrade
+    await engine.ingest_submissions(
+        "alice",
+        [_sub(102, "two-sum", "Accepted", start + timedelta(minutes=3), beat_pct=70.0)],
+    )
+    assert engine.contest.participants["alice"].score == 1 + 2
+
+    # AC #4 at beat 99 — would normally upgrade to tier 3 — but locked.
+    await engine.ingest_submissions(
+        "alice",
+        [_sub(103, "two-sum", "Accepted", start + timedelta(minutes=4), beat_pct=99.0)],
+    )
+    alice = engine.contest.participants["alice"]
+    assert alice.score == 1 + 2  # unchanged
+    assert alice.problem_bonus_pts["two-sum"] == 2  # unchanged
+    assert alice.problem_ac_count["two-sum"] == 4
+
+    overflow_evt = next(e for e in engine.contest.events if e.submission_id == "103")
+    assert overflow_evt.is_overflow is True
+    assert overflow_evt.is_scoring is False
+    assert overflow_evt.bonus_delta == 0
+
+
+@pytest.mark.asyncio
+async def test_untracked_problem_emits_admin_event_when_in_window(tmp_path: Path):
+    """Submissions to non-contest problems become events (with is_tracked=False)
+    once the contest has started, so the admin can spot off-topic activity."""
+    engine = _make_engine(tmp_path)
+    start = datetime(2026, 1, 1, 10, tzinfo=timezone.utc)
+    _seed(engine, start, start + timedelta(hours=2))
+
+    # Pre-start untracked: skipped entirely
+    await engine.ingest_submissions(
+        "alice",
+        [_sub(200, "longest-palindrome", "Accepted", start - timedelta(minutes=5))],
+    )
+    assert engine.contest.events == []
+
+    # Post-start untracked: emitted as informational event, score unchanged
+    await engine.ingest_submissions(
+        "alice",
+        [_sub(201, "longest-palindrome", "Accepted", start + timedelta(minutes=5))],
+    )
+    assert engine.contest.participants["alice"].score == 0
+    assert len(engine.contest.events) == 1
+    evt = engine.contest.events[0]
+    assert evt.is_tracked is False
+    assert evt.is_scoring is False
+    assert evt.title_slug == "longest-palindrome"
+
+
+@pytest.mark.asyncio
 async def test_different_problems_use_own_tiers(tmp_path: Path):
     """Each problem's bonus tiers are independent."""
     engine = _make_engine(tmp_path)
