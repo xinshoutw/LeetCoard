@@ -150,6 +150,33 @@ class LeetCodeClient:
             raise LeetCodeError(f"unexpected problem shape for {slug}")
         return data
 
+    async def search_problems(self, query: str, limit: int = 12) -> List[dict]:
+        """Search problems by title fragment. Each item is
+        {frontend_id, id, title, title_slug, url}. Errors return [].
+        """
+        if not query:
+            return []
+        try:
+            data = await self._get("/search", params={"query": query})
+        except LeetCodeError:
+            return []
+        if not isinstance(data, list):
+            return []
+        out: List[dict] = []
+        for item in data[:limit]:
+            if not isinstance(item, dict):
+                continue
+            slug = item.get("title_slug") or item.get("titleSlug")
+            title = item.get("title")
+            if not isinstance(slug, str) or not isinstance(title, str):
+                continue
+            out.append({
+                "title": title,
+                "title_slug": slug,
+                "frontend_id": item.get("frontend_id") or item.get("id"),
+            })
+        return out
+
     async def get_recent_submissions(self, username: str, limit: int = 5) -> List[dict]:
         """Returns the most recent N submissions across all problems for `username`."""
         data = await self._get(f"/user/{username}/submissions", params={"limit": limit})
@@ -214,34 +241,6 @@ class LeetCodeClient:
             return None
         self._ok(sess)
         return f if 0.0 <= f <= 100.0 else None
-
-    async def get_solved_slugs(self, username: str) -> tuple[set[str], bool]:
-        """Returns (solved_slug_set, is_full).
-
-        leetcode-api-pied shape: {username, total_solved, solved_slugs:[...], solved:[{title_slug,...}]}
-        `is_full` is True only when a session cookie was used; without one the
-        upstream caps the response at ~20 most-recent.
-        """
-        data = await self._get(f"/user/{username}/solved", with_session=bool(self._states))
-        slugs: set[str] = set()
-        if isinstance(data, dict):
-            raw = data.get("solved_slugs")
-            if isinstance(raw, list):
-                slugs.update(s for s in raw if isinstance(s, str))
-            raw2 = data.get("solved")
-            if isinstance(raw2, list):
-                for item in raw2:
-                    if isinstance(item, dict):
-                        s = item.get("title_slug") or item.get("titleSlug")
-                        if isinstance(s, str):
-                            slugs.add(s)
-        elif isinstance(data, list):
-            for item in data:
-                if isinstance(item, dict):
-                    s = item.get("title_slug") or item.get("titleSlug")
-                    if isinstance(s, str):
-                        slugs.add(s)
-        return slugs, bool(self._states)
 
 
 def _coerce_submission_list(data) -> List[dict]:

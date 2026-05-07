@@ -21,7 +21,7 @@ from typing import Optional
 
 from pydantic import ValidationError
 
-from .models import Contest, default_contest
+from ..domain.models import Contest, default_contest
 
 log = logging.getLogger("gdg.storage")
 
@@ -44,6 +44,12 @@ class ContestStore:
     @property
     def contest(self) -> Contest:
         return self._contest
+
+    def replace_contest(self, contest: Contest) -> None:
+        """Atomically swap the in-memory contest. Caller is responsible for
+        flushing afterwards."""
+
+        self._contest = contest
 
     def load_sync(self) -> None:
         """Best-effort load on boot. Falls back to backup, then to default."""

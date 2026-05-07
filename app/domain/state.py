@@ -1,7 +1,6 @@
 """ContestEngine — owns Contest mutations and is the single source of truth.
 
-All routes, the polling worker, the pre-check worker, and the mock worker call
-into this class. It enforces:
+All routes and the polling worker call into this class. It enforces:
 - state-machine transitions
 - contest-time gating on scoring
 - "at most one score per (user, problem)" invariant
@@ -19,27 +18,23 @@ from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
-from .config import Settings
+from ..core.config import Settings
+from ..core.scoring import compute_beat_bonus
+from ..core.sse import Broadcaster
+from ..core.storage import ContestStore
 from .models import (
     Contest,
     ContestStatus,
     Difficulty,
     Participant,
-    PollingStatus,
-    PrecheckResult,
     Problem,
     SubmissionEvent,
     SubmissionStatus,
-    SystemEvent,
 )
-from .scoring import compute_beat_bonus
-from .sse import Broadcaster
-from .storage import ContestStore
 
 log = logging.getLogger("gdg.engine")
 
 _MAX_EVENTS = 500
-_MAX_SYSTEM_EVENTS = 200
 _SHORT_LABELS = {
     "Accepted": "AC",
     "Wrong Answer": "WA",
@@ -118,15 +113,6 @@ class ContestEngine:
             payload["participants_admin"] = {
                 k: v.model_dump(mode="json") for k, v in c.participants.items()
             }
-            payload["precheck_results"] = [
-                r.model_dump(mode="json") for r in c.precheck_results
-            ]
-            payload["polling_status"] = {
-                u: s.model_dump(mode="json") for u, s in c.polling_status.items()
-            }
-            payload["system_events"] = [
-                e.model_dump(mode="json") for e in c.system_events[-100:]
-            ]
         return payload
 
     def _push_leaderboard(self) -> None:
@@ -134,8 +120,14 @@ class ContestEngine:
 
     def _leaderboard_snapshot(self) -> List[dict]:
         ranked = self._compute_ranks()
+        diff_by_slug = {prob.title_slug: prob.difficulty for prob in self.contest.problems}
         out: List[dict] = []
         for p in ranked:
+            counts = {Difficulty.easy: 0, Difficulty.medium: 0, Difficulty.hard: 0}
+            for slug in p.solved_problems:
+                d = diff_by_slug.get(slug)
+                if d is not None:
+                    counts[d] += 1
             out.append(
                 {
                     "rank": p.rank,
@@ -149,9 +141,9 @@ class ContestEngine:
                     if p.reached_current_score_at
                     else None,
                     # In-contest counts (only for tracked problems).
-                    "easy_solved": self._count_solved_by_diff(p, Difficulty.easy),
-                    "medium_solved": self._count_solved_by_diff(p, Difficulty.medium),
-                    "hard_solved": self._count_solved_by_diff(p, Difficulty.hard),
+                    "easy_solved": counts[Difficulty.easy],
+                    "medium_solved": counts[Difficulty.medium],
+                    "hard_solved": counts[Difficulty.hard],
                     # Pre-game info (LeetCode global stats).
                     "lc_ranking": p.lc_ranking,
                     "lc_easy_total": p.lc_easy_total,
@@ -160,10 +152,6 @@ class ContestEngine:
                 }
             )
         return out
-
-    def _count_solved_by_diff(self, p: Participant, diff: Difficulty) -> int:
-        diffs = {prob.title_slug: prob.difficulty for prob in self.contest.problems}
-        return sum(1 for slug in p.solved_problems if diffs.get(slug) == diff)
 
     def _compute_ranks(self) -> List[Participant]:
         # Sort: -score, reached_current_score_at asc (never None for >0 score),
@@ -192,13 +180,6 @@ class ContestEngine:
             last_score = p.score
         return plist
 
-    def _system_event(self, kind: str, message: str, level: str = "info", **detail: str) -> None:
-        evt = SystemEvent(kind=kind, message=message, level=level, detail=detail or None)
-        self.contest.system_events.append(evt)
-        if len(self.contest.system_events) > _MAX_SYSTEM_EVENTS:
-            del self.contest.system_events[:-_MAX_SYSTEM_EVENTS]
-        self._bc.broadcast("system_event", evt.model_dump(mode="json"), audience="admin")
-
     # -------- state transitions --------
 
     def _ensure_unlocked(self, what: str) -> None:
@@ -212,8 +193,7 @@ class ContestEngine:
             raise StartLockError("Problems cannot be modified after contest has started")
 
     async def set_problems(self, problems: List[Problem]) -> Tuple[List[str], List[str]]:
-        """Returns (added_slugs, removed_slugs) so the caller can fire pre-check
-        only on newly added problems."""
+        """Returns (added_slugs, removed_slugs) for callers that want diff info."""
         async with self._lock:
             self._ensure_unlocked_problems()
             seen_slugs = set()
@@ -226,10 +206,6 @@ class ContestEngine:
             added = sorted(new_slugs - old_slugs)
             removed = sorted(old_slugs - new_slugs)
             self.contest.problems = sorted(problems, key=lambda p: p.order)
-            self._system_event(
-                "problems_updated",
-                f"{len(problems)} problems · +{len(added)} -{len(removed)}",
-            )
             self._flag_dirty_and_broadcast(
                 "problems_updated",
                 {"problems": [p.model_dump(mode="json") for p in self.contest.problems]},
@@ -259,10 +235,6 @@ class ContestEngine:
                     )
                     created += 1
                     new_usernames.append(u)
-            self._system_event(
-                "participants_updated",
-                f"{created} created, {updated} updated, {len(errors)} errors",
-            )
             self._flag_dirty_and_broadcast(
                 "participants_updated",
                 {"count": len(self.contest.participants)},
@@ -275,7 +247,6 @@ class ContestEngine:
         async with self._lock:
             existed = self.contest.participants.pop(username, None) is not None
             if existed:
-                self._system_event("participant_removed", f"removed {username}")
                 self._flag_dirty_and_broadcast(
                     "participants_updated",
                     {"count": len(self.contest.participants)},
@@ -306,11 +277,6 @@ class ContestEngine:
                 raise ValueError("End time must be strictly after start time")
             self.contest.start_time = start
             self.contest.end_time = end
-            self._system_event(
-                "times_updated",
-                f"start={start.isoformat() if start else 'null'} "
-                f"end={end.isoformat() if end else 'null'}",
-            )
             self._flag_dirty_and_broadcast(
                 "times_updated",
                 {
@@ -320,7 +286,7 @@ class ContestEngine:
             )
 
     async def set_status(self, status: ContestStatus) -> None:
-        """Used internally for transitions; routes go through start/end/precheck."""
+        """Used internally for transitions; routes go through start/end."""
         async with self._lock:
             self.contest.status = status
             self._flag_dirty_and_broadcast(
@@ -338,7 +304,7 @@ class ContestEngine:
 
     async def start_contest(self) -> None:
         async with self._lock:
-            if self.contest.status not in (ContestStatus.setup, ContestStatus.precheck):
+            if self.contest.status != ContestStatus.setup:
                 raise ValueError(f"Cannot start from status {self.contest.status.value}")
             if not self.contest.start_time or not self.contest.end_time:
                 raise ValueError("Start and end times must be set before starting")
@@ -348,7 +314,6 @@ class ContestEngine:
                 raise ValueError("At least one participant must be added")
             self.contest.status = ContestStatus.running
             self.contest.last_started_at = _utcnow()
-            self._system_event("contest_started", "running")
         await self.set_status(ContestStatus.running)
         await self._store.flush_now()
 
@@ -356,20 +321,8 @@ class ContestEngine:
         async with self._lock:
             self.contest.status = ContestStatus.ended
             self.contest.last_ended_at = _utcnow()
-            self._system_event("contest_ended", "ended")
         await self.set_status(ContestStatus.ended)
         await self._store.flush_now()
-
-    async def begin_precheck(self) -> None:
-        async with self._lock:
-            if self.contest.status != ContestStatus.setup:
-                # idempotent re-runs allowed only from setup; still allow re-run from precheck
-                if self.contest.status != ContestStatus.precheck:
-                    raise ValueError(f"Pre-check only valid from setup/precheck, "
-                                     f"not {self.contest.status.value}")
-            self.contest.status = ContestStatus.precheck
-            self._system_event("precheck_started", "running pre-check")
-        await self.set_status(ContestStatus.precheck)
 
     async def reset_contest(self, *, keep_config: bool) -> None:
         async with self._lock:
@@ -392,17 +345,16 @@ class ContestEngine:
                 if keep_config
                 else {}
             )
-            self._store._contest = Contest(
-                status=ContestStatus.setup,
-                problems=problems,
-                participants=participants,
-                start_time = None,
-                end_time = None,
-                # start_time=self.contest.start_time, if keep_config else None,
-                # end_time=self.contest.end_time if keep_config else None,
-                last_reset_at=_utcnow(),
+            self._store.replace_contest(
+                Contest(
+                    status=ContestStatus.setup,
+                    problems=problems,
+                    participants=participants,
+                    start_time=None,
+                    end_time=None,
+                    last_reset_at=_utcnow(),
+                )
             )
-            self._system_event("reset", f"keep_config={keep_config}")
         # Send reset to BOTH audiences with audience-specific snapshots so the
         # admin dashboard doesn't lose its admin-only fields.
         self._store.mark_dirty()
@@ -418,44 +370,6 @@ class ContestEngine:
         )
         self._push_leaderboard()
         await self._store.flush_now()
-
-    # -------- precheck ingestion --------
-
-    async def add_precheck_results(self, results: List[PrecheckResult]) -> None:
-        async with self._lock:
-            existing_keys = {(r.username, r.title_slug) for r in self.contest.precheck_results}
-            for r in results:
-                key = (r.username, r.title_slug)
-                if key in existing_keys:
-                    # replace previous entry rather than duplicating
-                    self.contest.precheck_results = [
-                        x for x in self.contest.precheck_results if (x.username, x.title_slug) != key
-                    ]
-                self.contest.precheck_results.append(r)
-            self._system_event("precheck_update", f"{len(results)} results recorded")
-        self._flag_dirty_and_broadcast(
-            "precheck_update",
-            {"results": [r.model_dump(mode="json") for r in self.contest.precheck_results]},
-            audience="admin",
-        )
-
-    # -------- polling status --------
-
-    async def update_polling(self, username: str, **fields) -> None:
-        async with self._lock:
-            cur = self.contest.polling_status.get(username) or PollingStatus(username=username)
-            data = cur.model_dump()
-            data.update(fields)
-            self.contest.polling_status[username] = PollingStatus(**data)
-            self._store.mark_dirty()
-        self._bc.broadcast(
-            "polling_status",
-            {
-                "username": username,
-                **{k: v.isoformat() if isinstance(v, datetime) else v for k, v in fields.items()},
-            },
-            audience="admin",
-        )
 
     # -------- submission ingestion (the scoring path) --------
 

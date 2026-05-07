@@ -16,9 +16,9 @@ import random
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Set
 
-from .config import Settings
-from .leetcode import LeetCodeClient, LeetCodeError
-from .state import ContestEngine
+from ..core.config import Settings
+from ..domain.state import ContestEngine
+from ..integrations.leetcode import LeetCodeClient, LeetCodeError
 
 log = logging.getLogger("gdg.polling")
 
@@ -188,27 +188,7 @@ class PollingWorker:
             )
             await self._enrich_runtime_percentile(subs)
             await self._engine.ingest_submissions(username, subs)
-            await self._engine.update_polling(
-                username,
-                last_checked_at=datetime.now(timezone.utc),
-                last_success_at=datetime.now(timezone.utc),
-                last_error=None,
-                consecutive_errors=0,
-                next_check_at=None,
-            )
         except LeetCodeError as exc:
-            current = self._engine.contest.polling_status.get(username)
-            await self._engine.update_polling(
-                username,
-                last_checked_at=datetime.now(timezone.utc),
-                last_error=str(exc),
-                consecutive_errors=(current.consecutive_errors + 1) if current else 1,
-            )
             log.warning("Poll failed for %s: %s", username, exc)
         except Exception:
             log.exception("Unexpected polling error for %s", username)
-            await self._engine.update_polling(
-                username,
-                last_checked_at=datetime.now(timezone.utc),
-                last_error="internal error",
-            )

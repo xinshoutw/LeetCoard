@@ -13,17 +13,17 @@ from pathlib import Path
 
 import pytest
 
-from app.config import Settings
-from app.models import (
+from app.core.config import Settings
+from app.core.sse import Broadcaster
+from app.core.storage import ContestStore
+from app.domain.models import (
     Contest,
     ContestStatus,
     Difficulty,
     Participant,
     Problem,
 )
-from app.sse import Broadcaster
-from app.state import ContestEngine
-from app.storage import ContestStore
+from app.domain.state import ContestEngine
 
 
 def _make_engine(tmp_path: Path) -> tuple[ContestEngine, ContestStore]:

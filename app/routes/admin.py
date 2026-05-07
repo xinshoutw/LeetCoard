@@ -15,10 +15,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from ..auth import admin_token_for_sse, require_admin
-from ..models import BonusTier, ContestStatus, Difficulty, Problem
-from ..state import StartLockError
-from ..sse import broadcaster
+from ..core.auth import admin_token_for_sse, require_admin
+from ..core.sse import broadcaster
+from ..domain.models import Difficulty, Problem
+from ..domain.state import StartLockError
 
 
 router = APIRouter()
@@ -64,6 +64,47 @@ class ResetIn(BaseModel):
 @router.get("/auth/check")
 async def auth_check(_: None = Depends(require_admin)) -> dict:
     return {"ok": True}
+
+
+# ---- LeetCode problem search (proxy) ---------------------------------------
+
+@router.get("/leetcode/search")
+async def leetcode_search(
+    request: Request,
+    q: str = Query(default="", min_length=0, max_length=80),
+    _: None = Depends(require_admin),
+) -> dict:
+    """Proxy to leetcode-api-pied /search so the dashboard can autocomplete
+    title slugs without dealing with CORS."""
+    query = (q or "").strip()
+    if len(query) < 2:
+        return {"results": []}
+    client = request.app.state.lc_client
+    results = await client.search_problems(query)
+    return {"results": results}
+
+
+@router.get("/leetcode/problem/{slug}")
+async def leetcode_problem(
+    slug: str,
+    request: Request,
+    _: None = Depends(require_admin),
+) -> dict:
+    """Lightweight proxy returning just the bits the dashboard needs to
+    auto-fill a problem row (difficulty + canonical title)."""
+    client = request.app.state.lc_client
+    try:
+        data = await client.get_problem(slug)
+    except Exception:
+        raise HTTPException(status_code=404, detail="problem not found")
+    raw_diff = (data.get("difficulty") or "").strip().lower()
+    if raw_diff not in ("easy", "medium", "hard"):
+        raise HTTPException(status_code=502, detail=f"unexpected difficulty: {raw_diff!r}")
+    return {
+        "title_slug": slug,
+        "title": data.get("title") or slug,
+        "difficulty": raw_diff,
+    }
 
 
 # ---- Snapshot + stream ------------------------------------------------------
@@ -115,12 +156,6 @@ async def set_problems(body: ProblemsIn, request: Request, _: None = Depends(req
     except (ValueError, StartLockError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    # Auto re-run pre-check for every participant against newly added problems.
-    pre = request.app.state.precheck_worker
-    if pre is not None and added and engine.contest.participants:
-        pairs = [(u, s) for u in engine.contest.participants for s in added]
-        await pre.start(only_new_problems_for=pairs)
-
     return {"ok": True, "count": len(problems), "added": added, "removed": removed}
 
 
@@ -152,12 +187,6 @@ async def bulk_upsert(body: ParticipantsBulkIn, request: Request, _: None = Depe
     if polling is not None:
         for u in new_users:
             polling.enqueue_profile_fetch(u)
-
-    # Auto-run pre-check for new users against all current problems.
-    pre = request.app.state.precheck_worker
-    if pre is not None and new_users and engine.contest.problems:
-        pairs = [(u, p.title_slug) for u in new_users for p in engine.contest.problems]
-        await pre.start(only_new_problems_for=pairs)
 
     return {
         "ok": True,
@@ -208,34 +237,11 @@ async def reset_contest(body: ResetIn, request: Request, _: None = Depends(requi
     engine = request.app.state.engine
     await engine.reset_contest(keep_config=body.keep_config)
 
-    # Reset clears precheck_results — auto re-run pre-check so the dashboard
-    # warning panel repopulates without the admin having to click again.
-    pre = request.app.state.precheck_worker
-    if pre is not None and engine.contest.problems and engine.contest.participants:
-        await pre.start()
-
-    # Profile fetch is also re-queued so any participants that hadn't yet
-    # received their LC ranking / E-M-H counts get refreshed cleanly.
+    # Re-queue profile fetch so any participants that hadn't yet received their
+    # LC ranking / E-M-H counts get refreshed cleanly after reset.
     polling = request.app.state.polling_worker
     if polling is not None:
         for u in engine.contest.participants:
             polling.enqueue_profile_fetch(u)
 
     return {"ok": True, "status": engine.contest.status.value, "keep_config": body.keep_config}
-
-
-@router.post("/precheck/run")
-async def run_precheck(request: Request, _: None = Depends(require_admin)) -> dict:
-    pre = request.app.state.precheck_worker
-    if pre is None:
-        raise HTTPException(status_code=503, detail="precheck worker not running (mock mode?)")
-    await pre.start(transition_status=True)
-    return {"ok": True}
-
-
-@router.post("/broadcast/refresh")
-async def force_rebroadcast(request: Request, _: None = Depends(require_admin)) -> dict:
-    engine = request.app.state.engine
-    broadcaster.broadcast("snapshot", engine.snapshot_dict(audience="public"))
-    broadcaster.broadcast("snapshot", engine.snapshot_dict(audience="admin"), audience="admin")
-    return {"ok": True}

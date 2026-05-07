@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from app.models import BonusTier, Contest, ContestStatus, Difficulty, Participant, Problem
-from app.scoring import compute_beat_bonus
-from app.sse import Broadcaster
-from app.state import ContestEngine
-from app.storage import ContestStore
-from app.config import Settings
+from app.core.config import Settings
+from app.core.scoring import compute_beat_bonus
+from app.core.sse import Broadcaster
+from app.core.storage import ContestStore
+from app.domain.models import BonusTier, Contest, ContestStatus, Difficulty, Participant, Problem
+from app.domain.state import ContestEngine
 
 # ---------------------------------------------------------------------------
 # Pure-function tests — compute_beat_bonus

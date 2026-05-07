@@ -12,8 +12,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from .models import ContestStatus
-from .state import ContestEngine
+from ..domain.models import ContestStatus
+from ..domain.state import ContestEngine
 
 log = logging.getLogger("gdg.scheduler")
 
@@ -46,9 +46,9 @@ class ContestScheduler:
                 start = contest.start_time
                 end = contest.end_time
 
-                # Auto-start: status setup/precheck and start_time has arrived
+                # Auto-start: status setup and start_time has arrived
                 if (
-                    contest.status in (ContestStatus.setup, ContestStatus.precheck)
+                    contest.status == ContestStatus.setup
                     and start is not None
                     and end is not None
                     and contest.problems

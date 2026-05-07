@@ -20,7 +20,6 @@ def _utcnow() -> datetime:
 
 class ContestStatus(str, Enum):
     setup = "setup"
-    precheck = "precheck"
     running = "running"
     ended = "ended"
 
@@ -108,36 +107,6 @@ class SubmissionEvent(BaseModel):
     note: Optional[str] = None  # e.g. "outside contest window", "duplicate"
 
 
-class PrecheckResult(BaseModel):
-    username: str
-    student_id: str
-    title_slug: str
-    detected: bool
-    checked_at: datetime = Field(default_factory=_utcnow)
-    confidence: str  # "full" if session cookie used, "partial" otherwise
-    note: Optional[str] = None
-
-
-class PollingStatus(BaseModel):
-    username: str
-    last_checked_at: Optional[datetime] = None
-    last_success_at: Optional[datetime] = None
-    last_error: Optional[str] = None
-    next_check_at: Optional[datetime] = None
-    consecutive_errors: int = 0
-
-
-class SystemEvent(BaseModel):
-    """Operator-visible system events (contest start/stop, API errors, etc.)."""
-
-    id: str = Field(default_factory=lambda: uuid4().hex)
-    at: datetime = Field(default_factory=_utcnow)
-    level: str = "info"  # info | warn | error
-    kind: str  # contest_started | contest_ended | api_error | reset | ...
-    message: str
-    detail: Optional[Dict[str, str]] = None
-
-
 class Contest(BaseModel):
     """Full persistent contest state. Mirrored to disk as JSON on every change."""
 
@@ -151,9 +120,6 @@ class Contest(BaseModel):
     seen_submission_ids: Set[str] = Field(default_factory=set)
 
     events: List[SubmissionEvent] = Field(default_factory=list)
-    system_events: List[SystemEvent] = Field(default_factory=list)
-    precheck_results: List[PrecheckResult] = Field(default_factory=list)
-    polling_status: Dict[str, PollingStatus] = Field(default_factory=dict)
 
     last_started_at: Optional[datetime] = None
     last_ended_at: Optional[datetime] = None
@@ -163,12 +129,6 @@ class Contest(BaseModel):
 
 
 def default_contest() -> Contest:
-    """Default factory — used on cold-boot when no JSON file exists."""
+    """Cold-boot factory — empty contest in setup state."""
 
-    default_problems = [
-        Problem(title_slug="two-sum", difficulty=Difficulty.easy, points=1, order=0),
-        Problem(title_slug="valid-parentheses", difficulty=Difficulty.easy, points=1, order=1),
-        Problem(title_slug="3sum", difficulty=Difficulty.medium, points=3, order=2),
-        Problem(title_slug="trapping-rain-water", difficulty=Difficulty.hard, points=5, order=3),
-    ]
-    return Contest(problems=default_problems)
+    return Contest()

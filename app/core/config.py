@@ -31,10 +31,7 @@ class Settings(BaseSettings):
 
     cors_origins: str = "*"
 
-    mock_mode: bool = False
-    mock_script_path: Path = Path("./mock/sample.json")
-
-    @field_validator("data_dir", "mock_script_path", mode="before")
+    @field_validator("data_dir", mode="before")
     @classmethod
     def _expand(cls, v: str | Path) -> Path:
         return Path(v).expanduser()
