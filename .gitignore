@@ -31,5 +31,6 @@ uv.lock
 
 # IDE / OS
 .DS_Store
-.idea/workspace.xml
+.idea/
+*.iml
 *.log
