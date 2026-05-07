@@ -74,14 +74,13 @@ export default function ParticipantsPanel({ snapshot, token }: Props) {
   };
 
   const remove = async (username: string) => {
-    if (!window.confirm(`移除 ${username}？`)) return;
     try {
       await api(`/api/admin/participants/${encodeURIComponent(username)}`, {
         method: "DELETE",
         token,
       });
     } catch (e) {
-      alert(e instanceof ApiError ? `${e.status}: ${e.message}` : String(e));
+      setMsg({ ok: false, text: e instanceof ApiError ? `${e.status}: ${e.message}` : String(e) });
     }
   };
 
