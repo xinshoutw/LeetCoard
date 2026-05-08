@@ -33,12 +33,18 @@ function buildSolvers(
   events: SubmissionEventPayload[],
   rowByUser: Map<string, LeaderboardRow>,
 ): Solver[] {
-  // Take only tracked AC events for this problem; pick each user's best
-  // beat_pct (fallback to first AC time).
+  // Only adopted (is_scoring) AC events contribute to the displayed beat%
+  // and the sort key. is_scoring is set by the backend exclusively on the
+  // first in-window AC and on bonus upgrades — i.e. exactly the submissions
+  // whose beat% mutated `problem_best_beat_pct`. This intentionally excludes:
+  //   - out-of-window ACs (is_scoring always false)
+  //   - 4th+ overflow ACs (is_scoring always false)
+  //   - re-ACs that did not move the bonus tier
   const best = new Map<string, Solver>();
   for (const e of events) {
     if (!e.is_accepted) continue;
     if (!e.is_tracked) continue;
+    if (!e.is_scoring) continue;
     if (e.title_slug !== problem.title_slug) continue;
     const row = rowByUser.get(e.username);
     if (!row || !row.solved_problems.includes(problem.title_slug)) continue;
