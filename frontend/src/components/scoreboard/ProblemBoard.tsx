@@ -62,9 +62,12 @@ function buildSolvers(
       const prevBeat = prev.beat_pct ?? -1;
       const curBeat = beat ?? -1;
       if (curBeat > prevBeat) {
+        // Tiebreaker for the problem-card sort uses the time of the *best*
+        // beat% submission, not the earliest scoring AC. Otherwise a user who
+        // hit 100% later loses their lead to someone whose first AC was earlier.
         prev.beat_pct = beat;
-      }
-      if (e.submitted_at < prev.solved_at) {
+        prev.solved_at = e.submitted_at;
+      } else if (curBeat === prevBeat && e.submitted_at < prev.solved_at) {
         prev.solved_at = e.submitted_at;
       }
     }
