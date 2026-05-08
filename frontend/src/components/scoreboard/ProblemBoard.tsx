@@ -150,7 +150,6 @@ function ProblemCard({ problem, solvers, blurTitle }: CardProps) {
   const masked = blurTitle || !problem.title;
   const title = masked ? "— — — — —" : (problem.title as string);
   const number = masked ? "???" : (problem.frontend_id ?? "—");
-  const top = solvers[0];
 
   return (
     <motion.div
