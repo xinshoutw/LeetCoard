@@ -156,11 +156,6 @@ function ProblemCard({ problem, solvers, blurTitle }: CardProps) {
     <motion.div
       layout
       className="rounded-2xl border border-white/10 bg-stage-900/60 overflow-hidden"
-      style={{
-        boxShadow: top
-          ? `inset 4px 0 0 ${top.color}, 0 0 28px -10px ${diffColor}`
-          : `inset 4px 0 0 ${diffColor}33`,
-      }}
     >
       {/* Title strip */}
       <div className="px-5 pt-4 pb-3 flex items-center gap-3">
