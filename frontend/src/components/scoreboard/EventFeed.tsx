@@ -5,6 +5,8 @@ import { userColor, difficultyColor } from "../../lib/color";
 interface Props {
   events: SubmissionEventPayload[];
   problems: ProblemPayload[];
+  startTime: string | null;
+  endTime: string | null;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -17,13 +19,19 @@ const STATUS_COLOR: Record<string, string> = {
   OLE: "#FBBC04",
 };
 
-export default function EventFeed({ events, problems }: Props) {
+export default function EventFeed({ events, problems, startTime, endTime }: Props) {
   // Public scoreboard: only tracked problems, and AC events that scored
   // (skip already-solved replays / outside-window). Non-AC failures still
   // show as feedback. Overflow ACs are kept so spectators see continued
-  // attempts but they're visually demoted.
+  // attempts but they're visually demoted. Submissions outside the contest
+  // window are hidden entirely.
+  const startMs = startTime ? Date.parse(startTime) : null;
+  const endMs = endTime ? Date.parse(endTime) : null;
   const visible = events.filter((e) => {
     if (!e.is_tracked) return false;
+    if (startMs == null || endMs == null) return false;
+    const tMs = Date.parse(e.submitted_at);
+    if (Number.isNaN(tMs) || tMs < startMs || tMs > endMs) return false;
     if (e.is_accepted) return e.is_scoring || e.is_overflow;
     return true;
   });

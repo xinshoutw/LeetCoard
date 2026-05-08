@@ -34,7 +34,12 @@ export default function Scoreboard() {
           leaderboard={snapshot.leaderboard}
           status={snapshot.status}
         />
-        <EventFeed events={snapshot.events} problems={snapshot.problems} />
+        <EventFeed
+          events={snapshot.events}
+          problems={snapshot.problems}
+          startTime={snapshot.start_time}
+          endTime={snapshot.end_time}
+        />
       </div>
     </div>
   );
