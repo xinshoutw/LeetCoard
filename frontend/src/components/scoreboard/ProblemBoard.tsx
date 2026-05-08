@@ -20,6 +20,7 @@ interface Solver {
   color: string;
   beat_pct: number | null;
   solved_at: string;
+  submission_id: string | null;
 }
 
 const DIFF_LABEL: Record<ProblemPayload["difficulty"], string> = {
@@ -57,6 +58,7 @@ function buildSolvers(
         color: userColor(e.username, row.color),
         beat_pct: beat,
         solved_at: e.submitted_at,
+        submission_id: e.submission_id,
       });
     } else {
       const prevBeat = prev.beat_pct ?? -1;
@@ -67,8 +69,10 @@ function buildSolvers(
         // hit 100% later loses their lead to someone whose first AC was earlier.
         prev.beat_pct = beat;
         prev.solved_at = e.submitted_at;
+        prev.submission_id = e.submission_id;
       } else if (curBeat === prevBeat && e.submitted_at < prev.solved_at) {
         prev.solved_at = e.submitted_at;
+        prev.submission_id = e.submission_id;
       }
     }
   }
@@ -85,6 +89,7 @@ function buildSolvers(
       color: userColor(row.username, row.color),
       beat_pct: null,
       solved_at: "",
+      submission_id: null,
     });
   }
 
@@ -189,16 +194,11 @@ function ProblemCard({ problem, solvers, blurTitle }: CardProps) {
         ) : (
           <div className="flex flex-wrap gap-3">
             <AnimatePresence initial={false}>
-              {solvers.map((s, idx) => (
-                <motion.div
-                  key={s.username}
-                  layout
-                  initial={{ opacity: 0, scale: 0.6 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.6 }}
-                  transition={{ type: "spring", stiffness: 180, damping: 22 }}
-                  className="flex flex-col items-center w-16"
-                >
+              {solvers.map((s, idx) => {
+                const submissionUrl = s.submission_id
+                  ? `https://leetcode.com/submissions/detail/${s.submission_id}/`
+                  : null;
+                const AvatarInner = (
                   <div className="relative">
                     <div
                       className="size-12 rounded-full overflow-hidden"
@@ -224,6 +224,30 @@ function ProblemCard({ problem, solvers, blurTitle }: CardProps) {
                       </span>
                     )}
                   </div>
+                );
+                return (
+                <motion.div
+                  key={s.username}
+                  layout
+                  initial={{ opacity: 0, scale: 0.6 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.6 }}
+                  transition={{ type: "spring", stiffness: 180, damping: 22 }}
+                  className="flex flex-col items-center w-16"
+                >
+                  {submissionUrl ? (
+                    <a
+                      href={submissionUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`查看 ${s.username} 的 LeetCode 提交`}
+                      className="transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 rounded-full"
+                    >
+                      {AvatarInner}
+                    </a>
+                  ) : (
+                    AvatarInner
+                  )}
                   <div
                     className="mt-1 text-[11px] font-bold leading-tight tracking-tight max-w-full truncate"
                     style={{ color: s.color }}
@@ -235,7 +259,8 @@ function ProblemCard({ problem, solvers, blurTitle }: CardProps) {
                     {s.beat_pct != null ? `${s.beat_pct.toFixed(1)}%` : "—"}
                   </div>
                 </motion.div>
-              ))}
+                );
+              })}
             </AnimatePresence>
           </div>
         )}
